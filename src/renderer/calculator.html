@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>计算器 - Test cat</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="calculator.css" />
+  </head>
+  <body class="calculator-body">
+    <main class="calculator-shell">
+      <header class="calculator-titlebar">
+        <div class="calculator-brand"><img src="../../assets/modules/calculator.png" alt="" /><strong>Test cat 计算器</strong></div>
+        <button id="calculator-backspace" type="button" aria-label="退格" title="退格">⌫</button>
+      </header>
+
+      <section class="calculator-display" aria-live="polite">
+        <div id="calculator-expression">0</div>
+        <strong id="calculator-result">0</strong>
+      </section>
+
+      <section class="calculator-keypad" aria-label="计算器按键">
+        <button class="utility" data-action="clear">AC</button>
+        <button class="utility" data-value="(">(</button>
+        <button class="utility" data-value=")">)</button>
+        <button class="operator" data-value="/">÷</button>
+
+        <button data-value="7">7</button><button data-value="8">8</button><button data-value="9">9</button>
+        <button class="operator" data-value="*">×</button>
+        <button data-value="4">4</button><button data-value="5">5</button><button data-value="6">6</button>
+        <button class="operator" data-value="-">−</button>
+        <button data-value="1">1</button><button data-value="2">2</button><button data-value="3">3</button>
+        <button class="operator" data-value="+">＋</button>
+        <button class="utility" data-value="%">%</button><button data-value="0">0</button><button data-value=".">.</button>
+        <button class="equals" data-action="equals">＝</button>
+      </section>
+      <p class="calculator-hint">支持键盘输入 · Esc 清空 · Enter 计算</p>
+    </main>
+    <script src="calculator.js"></script>
+  </body>
+</html>

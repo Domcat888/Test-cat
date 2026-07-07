@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>录屏 - Test cat</title>
+    <link rel="stylesheet" href="capture.css" />
+  </head>
+  <body class="floating-recorder-body">
+    <section class="floating-recorder-shell">
+      <div class="floating-recorder-main">
+        <div class="floating-recorder-title">
+          <span class="record-dot" id="record-dot"></span>
+          <div>
+            <strong id="record-status-text">准备录制</strong>
+            <small><span id="region-size">读取区域…</span><span class="dot-separator">·</span><span id="region-name">当前屏幕区域</span></small>
+          </div>
+        </div>
+        <p class="floating-recorder-note" id="save-note">框选区域会保留红色边框，控制条自动避开录制区域。</p>
+      </div>
+      <div class="floating-recorder-side">
+        <div class="timer" id="timer">00:00</div>
+        <div class="floating-recorder-actions">
+          <button class="primary" id="start-button" disabled>开始</button>
+          <button class="danger" id="stop-button" disabled>停止</button>
+          <button class="secondary" id="open-last-button" disabled>打开</button>
+          <button class="secondary icon-button" id="close-button" title="关闭">×</button>
+        </div>
+      </div>
+    </section>
+    <video id="preview-video" autoplay muted playsinline hidden></video>
+    <canvas id="record-canvas" hidden></canvas>
+    <div class="toast" id="toast"></div>
+    <script src="screen-recorder.js"></script>
+  </body>
+</html>

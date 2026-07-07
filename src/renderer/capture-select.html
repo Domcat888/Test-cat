@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>截图选择 - Test cat</title>
+    <link rel="stylesheet" href="capture.css" />
+  </head>
+  <body class="selection-body">
+    <div class="selection-root" id="selection-root">
+      <img id="screen-image" alt="" draggable="false" />
+      <div class="selection-mask"></div>
+      <div class="selection-crosshair-x" id="crosshair-x"></div>
+      <div class="selection-crosshair-y" id="crosshair-y"></div>
+      <div class="selection-tip" id="selection-tip">
+        <strong>框选截图区域</strong>
+        <span>拖拽选择区域，Esc 取消，Enter 打开编辑器。</span>
+      </div>
+      <div class="selection-box" id="selection-box">
+        <span class="selection-size" id="selection-size">0 × 0</span>
+        <span class="selection-handle handle-nw" data-handle="nw"></span>
+        <span class="selection-handle handle-n" data-handle="n"></span>
+        <span class="selection-handle handle-ne" data-handle="ne"></span>
+        <span class="selection-handle handle-e" data-handle="e"></span>
+        <span class="selection-handle handle-se" data-handle="se"></span>
+        <span class="selection-handle handle-s" data-handle="s"></span>
+        <span class="selection-handle handle-sw" data-handle="sw"></span>
+        <span class="selection-handle handle-w" data-handle="w"></span>
+      </div>
+      <div class="selection-toolbar" id="selection-toolbar">
+        <button class="primary-mini" data-action="toolbar" id="selection-done-button">完成</button>
+        <button data-action="editor" id="selection-editor-button">编辑</button>
+        <button data-action="copy">复制</button>
+        <button data-action="pin">贴屏</button>
+        <button data-action="save">保存</button>
+        <button data-action="cancel">取消</button>
+      </div>
+    </div>
+    <script src="capture-select.js"></script>
+  </body>
+</html>

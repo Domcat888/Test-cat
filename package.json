@@ -1,0 +1,84 @@
+{
+  "name": "test-cat",
+  "version": "0.8.3",
+  "description": "A cross-platform desktop shell for organizing local testing tools.",
+  "main": "src/main.js",
+  "author": "Test cat",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "build:renderer": "esbuild src/renderer/mobile-mirror-entry.js --bundle --format=iife --platform=browser --target=chrome120 --outfile=src/renderer/mobile-mirror.bundle.js",
+    "start": "npm run build:renderer && electron .",
+    "preview": "npm run build:renderer && electron .",
+    "dev": "npm run build:renderer && electron . --devtools",
+    "test": "node --test",
+    "verify:scrcpy": "node scripts/verify-scrcpy.mjs",
+    "pack": "electron-builder --dir",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
+    "build": "electron-builder --mac --win"
+  },
+  "devDependencies": {
+    "@yume-chan/fetch-scrcpy-server": "^1.0.0",
+    "electron": "42.5.1",
+    "electron-builder": "26.15.3",
+    "esbuild": "^0.25.12"
+  },
+  "build": {
+    "appId": "com.testcat.desktop",
+    "productName": "Test cat",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "resources/**/*",
+      "CHANGELOG.md",
+      "package.json"
+    ],
+    "mac": {
+      "icon": "assets/icons/test-cat.icns",
+      "category": "public.app-category.developer-tools",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "win": {
+      "icon": "assets/icons/test-cat.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Test cat"
+    }
+  },
+  "dependencies": {
+    "@yume-chan/adb": "^2.6.0",
+    "@yume-chan/adb-scrcpy": "^2.3.2",
+    "@yume-chan/adb-server-node-tcp": "^2.5.2",
+    "@yume-chan/scrcpy": "^2.3.0",
+    "@yume-chan/scrcpy-decoder-webcodecs": "^2.5.3",
+    "@yume-chan/stream-extra": "^2.6.1"
+  }
+}

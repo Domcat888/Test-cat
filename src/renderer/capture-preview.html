@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>截图预览 - Test cat</title>
+    <link rel="stylesheet" href="capture.css" />
+  </head>
+  <body class="capture-preview-body">
+    <section class="capture-preview-shell">
+      <div class="capture-preview-thumb">
+        <img id="preview-image" alt="截图预览" draggable="false" />
+      </div>
+      <div class="capture-preview-content">
+        <div class="capture-preview-title">
+          <strong>截图完成</strong>
+          <button id="close-button" title="关闭">×</button>
+        </div>
+        <p id="preview-note">选择一个动作，或直接关闭。</p>
+        <div class="capture-preview-actions">
+          <button class="primary-mini" data-action="copy">复制</button>
+          <button data-action="pin">贴屏</button>
+          <button data-action="editor">编辑</button>
+          <button data-action="save">保存</button>
+        </div>
+      </div>
+    </section>
+    <script src="capture-preview.js"></script>
+  </body>
+</html>

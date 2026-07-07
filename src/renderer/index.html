@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Test cat</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <img src="../../assets/icon.png" alt="Test cat 图标" />
+          <div>
+            <strong>Test cat</strong>
+            <span>测试工具工作台</span>
+          </div>
+        </div>
+
+        <nav class="nav" aria-label="主导航">
+          <p class="nav-label">工作空间</p>
+          <button class="nav-item active" data-page="home">
+            <span class="nav-icon">⌂</span><span>首页</span>
+          </button>
+          <button class="nav-item" data-page="todo">
+            <span class="nav-icon">✓</span><span>测试待办</span>
+          </button>
+
+          <p class="nav-label settings-label">系统</p>
+          <button class="nav-item" data-page="settings">
+            <span class="nav-icon">⚙</span><span>设置</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-tip">
+          <span>🐾</span>
+          <p><b>保持专注</b><br />把常用测试工具放到一个地方。</p>
+        </div>
+        <div class="version">Test cat · v0.8.3</div>
+      </aside>
+
+      <main class="main">
+        <header class="topbar">
+          <div class="page-title-wrap">
+            <h1 id="page-title">亲爱的列文虎克</h1>
+            <p id="page-subtitle">准备好开始今天的测试了吗？</p>
+          </div>
+          <div class="top-actions">
+            <button class="icon-button" id="theme-button" aria-label="切换主题" title="切换主题">☼</button>
+          </div>
+        </header>
+
+        <section id="home-page" class="page active">
+          <div class="section-heading">
+            <div><h2>我的测试工具</h2><p>选择一个工具，开始测试工作</p></div>
+            <span class="sort-hint">↕ 拖拽卡片自定义排序</span>
+          </div>
+          <div id="home-module-grid" class="module-grid"></div>
+          <div id="home-empty" class="empty-state">
+            <div class="empty-illustration">
+              <div class="screen"><span>_</span></div>
+              <div class="cat-ears">▲　▲</div>
+              <div class="cat-face">• ᴗ •</div>
+              <div class="keyboard">▪ ▪ ▪ ▪ ▪</div>
+            </div>
+            <h3>这里还没有测试模块</h3>
+            <p>创建模块占位卡片，之后再逐步接入你自己的测试工具。</p>
+          </div>
+        </section>
+
+        <section id="modules-page" class="page">
+          <div class="toolbar">
+            <div class="filter-group" role="group" aria-label="模块筛选">
+              <button class="filter active" data-filter="all">全部</button>
+              <button class="filter" data-filter="接口测试">接口</button>
+              <button class="filter" data-filter="Web 测试">Web</button>
+              <button class="filter" data-filter="性能测试">性能</button>
+              <button class="filter" data-filter="其他">其他</button>
+            </div>
+            <button class="secondary-button" id="import-button">导入配置</button>
+            <button class="primary-button" data-add><span>＋</span> 添加工具</button>
+            <input id="import-input" type="file" accept="application/json,.json" hidden />
+          </div>
+          <div id="module-grid" class="module-grid"></div>
+          <div id="modules-empty" class="simple-empty">
+            <div>▦</div><h3>还没有模块</h3><p>添加一个模块，搭建你的测试工具集合。</p>
+            <button class="primary-button" data-add>添加模块</button>
+          </div>
+        </section>
+
+        <section id="todo-page" class="page todo-page">
+          <div class="todo-board">
+            <div class="todo-summary">
+              <div><span>今日测试计划</span><strong id="todo-count">0 项待完成</strong></div>
+              <button class="secondary-button" id="todo-clear-completed">清理已完成</button>
+            </div>
+
+            <form id="todo-form" class="todo-form">
+              <input id="todo-input" maxlength="100" required placeholder="例如：回归登录、支付和退款流程" />
+              <select id="todo-priority" aria-label="优先级">
+                <option value="normal">普通</option>
+                <option value="high">高优先</option>
+                <option value="low">低优先</option>
+              </select>
+              <button class="primary-button" type="submit"><span>＋</span> 添加任务</button>
+            </form>
+
+            <div class="todo-toolbar">
+              <div class="filter-group" role="group" aria-label="待办筛选">
+                <button class="filter active" type="button" data-todo-filter="all">全部</button>
+                <button class="filter" type="button" data-todo-filter="pending">待完成</button>
+                <button class="filter" type="button" data-todo-filter="done">已完成</button>
+              </div>
+            </div>
+
+            <ul id="todo-list" class="todo-list"></ul>
+            <div id="todo-empty" class="todo-empty">
+              <div>✓</div><h3>任务清单很干净</h3><p>写下今天需要验证、回归或跟进的测试任务吧。</p>
+            </div>
+          </div>
+        </section>
+
+        <section id="settings-page" class="page">
+          <div class="settings-card">
+            <h2>外观</h2>
+            <div class="setting-row">
+              <div><strong>深色模式</strong><p>切换 Test cat 的界面主题</p></div>
+              <label class="switch"><input id="theme-switch" type="checkbox" /><span></span></label>
+            </div>
+          </div>
+          <div class="settings-card companion-settings-card">
+            <div class="settings-card-title">
+              <div><h2 id="companion-pet-title">陪伴宠物 · 月薪喵</h2><p id="companion-pet-description">从录屏里提取的月薪喵，会在桌面随机移动、跳舞，并提醒你喝水、站起来活动。</p></div>
+              <span id="companion-pet-status" class="setting-status">正在读取配置…</span>
+            </div>
+            <div class="setting-row">
+              <div><strong id="companion-pet-enabled-title">让月薪喵出现在桌面</strong><p id="companion-pet-enabled-description">关闭后月薪喵会回窝，不再显示或提醒。</p></div>
+              <label class="switch"><input id="companion-pet-enabled" type="checkbox" /><span></span></label>
+            </div>
+            <div class="setting-row">
+              <div><strong>随机移动</strong><p id="companion-pet-movement-description">月薪喵会在桌面范围内散步，移动时播放跳舞帧。</p></div>
+              <label class="switch"><input id="companion-pet-movement" type="checkbox" /><span></span></label>
+            </div>
+            <div class="companion-setting-grid">
+              <label>
+                <span>多久散步一次（秒）</span>
+                <input id="companion-pet-walk-interval" type="number" min="8" max="300" step="1" />
+              </label>
+              <label>
+                <span>喝水提醒（分钟）</span>
+                <input id="companion-pet-water-minutes" type="number" min="1" max="480" step="1" />
+              </label>
+              <label>
+                <span>站立提醒（分钟）</span>
+                <input id="companion-pet-stand-minutes" type="number" min="1" max="480" step="1" />
+              </label>
+            </div>
+            <div class="companion-reminder-options">
+              <label><input id="companion-pet-water-enabled" type="checkbox" /> 开启喝水提醒</label>
+              <label><input id="companion-pet-stand-enabled" type="checkbox" /> 开启站立提醒</label>
+            </div>
+            <div class="capture-actions companion-actions">
+              <button class="secondary-button" id="companion-pet-walk-now" type="button">让月薪喵扭两步</button>
+              <button class="secondary-button" id="companion-pet-hide-now" type="button">让月薪喵回窝</button>
+            </div>
+          </div>
+          <div class="settings-card capture-settings-card">
+            <div class="settings-card-title">
+              <div><h2>截图与录屏</h2><p>用快捷键采集测试证据，支持截图标注、复制、贴屏和轻量框选录屏。</p></div>
+              <span id="capture-shortcut-status" class="setting-status">正在读取配置…</span>
+            </div>
+            <div class="setting-row">
+              <div><strong>启用全局快捷键</strong><p>开启后，即使 Test cat 不在前台也可以呼出截图或录屏。</p></div>
+              <label class="switch"><input id="capture-enabled" type="checkbox" /><span></span></label>
+            </div>
+            <div class="capture-setting-grid">
+              <label>
+                <span>截图快捷键</span>
+                <input id="capture-screenshot-shortcut" placeholder="点击后按下组合键" readonly />
+              </label>
+              <label>
+                <span>录屏快捷键</span>
+                <input id="capture-recorder-shortcut" placeholder="点击后按下组合键" readonly />
+              </label>
+              <label>
+                <span>截图后默认动作</span>
+                <select id="capture-screenshot-action">
+                  <option value="toolbar">显示小预览</option>
+                  <option value="editor">打开编辑器</option>
+                  <option value="copy">复制到剪贴板</option>
+                  <option value="pin">贴到屏幕</option>
+                  <option value="save">保存为 PNG</option>
+                </select>
+              </label>
+            </div>
+            <div class="capture-actions">
+              <button class="secondary-button" id="capture-save-settings">保存快捷键配置</button>
+              <button class="secondary-button" id="capture-start-screenshot">立即截图</button>
+              <button class="primary-button" id="capture-open-recorder">开始录屏</button>
+            </div>
+          </div>
+          <div class="settings-card about-card">
+            <div class="about-product">
+              <img src="../../assets/icon.png" alt="" />
+              <div><h2>Test cat</h2><p>跨平台测试工具工作台 · 版本 0.8.3</p></div>
+            </div>
+            <div class="project-meta-panel">
+              <h3>项目信息</h3>
+              <div class="project-meta-list">
+                <div class="project-meta-item">
+                  <span>工具名称</span>
+                  <strong>Test cat</strong>
+                </div>
+                <div class="project-meta-item">
+                  <span>定位</span>
+                  <strong>测试工作台</strong>
+                </div>
+                <div class="project-meta-item">
+                  <span>项目主导</span>
+                  <strong>Dom</strong>
+                </div>
+              </div>
+            </div>
+            <div class="changelog-panel">
+              <h3>更新日志</h3>
+              <article class="changelog-entry latest">
+                <div><strong>v0.8.3</strong><time>2026-07-07</time><span>当前版本</span></div>
+                <ul>
+                  <li>优化性能监控卡片文案，明确整机、目标 App、前台画面、采样间隔和会话累计等口径。</li>
+                  <li>目标 App CPU 改为“单核口径”说明，并同步显示等效核心数，避免误解为只能 0–100%。</li>
+                  <li>App 内存明确为 PSS，FPS、卡顿帧、网络速率、磁盘速率和电池功率补充来源说明。</li>
+                  <li>性能图表、报告对比和导出 Excel 同步显示统一单位与口径说明。</li>
+                  <li>继续保持严格实测模式：取不到真实数据时显示不可用，不生成模拟数据。</li>
+                </ul>
+              </article>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="modal-backdrop" id="module-modal" hidden>
+      <form class="modal" id="module-form">
+        <div class="modal-header">
+          <div><h2>添加测试模块</h2><p>先创建入口，后续再连接真实工具。</p></div>
+          <button type="button" class="close-button" data-close aria-label="关闭">×</button>
+        </div>
+        <label>模块名称<input id="module-name" maxlength="28" required placeholder="例如：接口自动化" /></label>
+        <label>模块分类
+          <select id="module-category">
+            <option>接口测试</option><option>Web 测试</option><option>性能测试</option><option>其他</option>
+          </select>
+        </label>
+        <label>模块说明<textarea id="module-description" maxlength="100" rows="3" placeholder="简单说明这个模块将来用来做什么"></textarea></label>
+        <fieldset><legend>标记颜色</legend><div class="color-options">
+          <label><input type="radio" name="color" value="blue" checked /><span class="color-dot blue"></span></label>
+          <label><input type="radio" name="color" value="purple" /><span class="color-dot purple"></span></label>
+          <label><input type="radio" name="color" value="green" /><span class="color-dot green"></span></label>
+          <label><input type="radio" name="color" value="orange" /><span class="color-dot orange"></span></label>
+        </div></fieldset>
+        <div class="modal-actions">
+          <button type="button" class="secondary-button" data-close>取消</button>
+          <button type="submit" class="primary-button">保存模块</button>
+        </div>
+      </form>
+    </div>
+    <div class="toast" id="toast" role="status"></div>
+    <script src="app.js"></script>
+  </body>
+</html>

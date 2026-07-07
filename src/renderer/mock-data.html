@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Mock 数据生成器 - Test cat</title>
+    <link rel="stylesheet" href="mock-data.css" />
+  </head>
+  <body>
+    <div class="mock-shell">
+      <header class="mock-titlebar">
+        <div class="mock-brand">
+          <img src="../../assets/modules/mock-data.png" alt="" />
+          <div><strong>Mock 数据生成器</strong><span>Test cat · Data Factory</span></div>
+        </div>
+        <div class="title-status done" id="title-status"><i></i><span>已准备好生成测试数据</span></div>
+      </header>
+
+      <main>
+        <section class="mock-hero">
+          <aside class="control-panel">
+            <div class="section-title">
+              <div><h2>生成配置</h2><p>常见测试字段和 JSON 模板都在这里</p></div>
+            </div>
+
+            <label class="field">
+              <span>数据类型</span>
+              <select id="mock-type">
+                <option value="phone">手机号</option>
+                <option value="idCard">身份证号</option>
+                <option value="email">邮箱</option>
+                <option value="username">用户名</option>
+                <option value="address">地址</option>
+                <option value="json">JSON 模板数据</option>
+              </select>
+            </label>
+
+            <label class="field">
+              <span>生成数量</span>
+              <input id="mock-count" type="number" min="1" max="500" value="20" />
+            </label>
+
+            <div class="json-template option-block" id="json-options" hidden>
+              <div class="template-head">
+                <span>JSON 模板</span>
+                <button class="ghost" id="reset-template" type="button">恢复默认模板</button>
+              </div>
+              <textarea id="json-template" spellcheck="false"></textarea>
+              <small>支持占位符：{{index}}、{{phone}}、{{idCard}}、{{email}}、{{username}}、{{address}}、{{name}}、{{age}}</small>
+            </div>
+
+            <div class="action-grid">
+              <button class="primary" id="generate-button" type="button">生成数据</button>
+              <button class="secondary" id="copy-button" type="button" disabled>复制结果</button>
+              <button class="secondary" id="export-button" type="button" disabled>导出 CSV</button>
+            </div>
+          </aside>
+
+          <section class="preview-panel">
+            <div class="section-title">
+              <div><h2>生成概览</h2><p>给测试用例、接口调试和批量造数快速备料</p></div>
+            </div>
+            <div class="stat-grid">
+              <div><span>当前类型</span><strong id="stat-type">手机号</strong></div>
+              <div><span>结果数量</span><strong id="stat-count">0</strong></div>
+              <div><span>复制格式</span><strong id="stat-format">按行复制</strong></div>
+              <div><span>更新时间</span><strong id="stat-time">未生成</strong></div>
+            </div>
+            <textarea id="preview-text" readonly spellcheck="false" placeholder="点击“生成数据”后，这里会出现可直接复制的测试数据。"></textarea>
+          </section>
+        </section>
+
+        <section class="result-panel">
+          <div class="section-title">
+            <div><h2>结果列表</h2><p>复制会使用右侧预览内容；CSV 会保留类型和值说明</p></div>
+            <div class="mini-actions">
+              <button class="ghost" id="clear-button" type="button">清空</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>#</th><th>类型</th><th>值</th><th>说明</th></tr></thead>
+              <tbody id="result-body"></tbody>
+            </table>
+            <div class="empty" id="empty-state">还没有生成数据。选一个类型，点“生成数据”就行。</div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <div class="toast" id="toast"></div>
+    <script src="mock-data.js"></script>
+  </body>
+</html>

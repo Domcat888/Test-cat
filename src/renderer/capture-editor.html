@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>截图编辑 - Test cat</title>
+    <link rel="stylesheet" href="capture.css" />
+  </head>
+  <body>
+    <div class="capture-shell">
+      <header class="capture-titlebar">
+        <div class="capture-brand">
+          <div class="brand-icon">✎</div>
+          <div><strong>截图编辑</strong><span>Test cat · 测试证据标注</span></div>
+        </div>
+        <div class="title-status active"><i></i><span>正在编辑截图</span></div>
+      </header>
+
+      <main class="editor-main">
+        <section class="editor-toolbar" aria-label="截图编辑工具栏">
+          <div class="tool-group">
+            <button class="tool-button active" data-tool="pen">画笔</button>
+            <button class="tool-button" data-tool="rect">矩形</button>
+            <button class="tool-button" data-tool="arrow">箭头</button>
+            <button class="tool-button" data-tool="text">文字</button>
+            <button class="tool-button" data-tool="mosaic">马赛克</button>
+          </div>
+          <div class="tool-group">
+            <label>颜色 <input id="color-input" type="color" value="#ff4d5a" /></label>
+            <label>粗细 <input id="size-input" type="range" min="2" max="24" value="5" /></label>
+          </div>
+          <div class="tool-group">
+            <button class="secondary" id="undo-button">撤销</button>
+            <button class="secondary" id="reset-button">清空标注</button>
+          </div>
+          <span class="toolbar-spacer"></span>
+          <button class="secondary" id="pin-button">贴到屏幕</button>
+          <button class="secondary" id="copy-button">复制</button>
+          <button class="primary" id="save-button">保存 PNG</button>
+        </section>
+
+        <section class="stage-panel">
+          <div class="stage-card">
+            <canvas id="editor-canvas"></canvas>
+            <div class="editor-hint" id="editor-hint">拖拽即可标注；文字工具点击后输入内容。</div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <div class="toast" id="toast"></div>
+    <script src="capture-editor.js"></script>
+  </body>
+</html>

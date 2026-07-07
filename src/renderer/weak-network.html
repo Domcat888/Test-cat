@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>弱网测试 - Test cat</title>
+    <link rel="stylesheet" href="weak-network.css" />
+  </head>
+  <body>
+    <div class="weak-shell">
+      <header class="weak-titlebar">
+        <div class="weak-brand">
+          <img src="../../assets/modules/weak-network.png" alt="" />
+          <div><strong>弱网测试</strong><span>Test cat · Android</span></div>
+        </div>
+        <div class="status-pill" id="window-status" data-phase="idle"><i></i><span>等待开始</span></div>
+      </header>
+
+      <main>
+        <section class="device-panel">
+          <label><span>Android 设备</span><select id="device-select"><option value="">正在查找设备…</option></select></label>
+          <button class="secondary" id="refresh-button">↻ 刷新设备</button>
+          <div class="device-tip"><i></i><span id="device-tip">请使用 USB 连接手机，并开启 USB 调试</span></div>
+        </section>
+
+        <section class="hero-panel">
+          <div>
+            <span class="eyebrow">场景化网络模拟</span>
+            <h1>今天要把网络“折腾”成什么样？</h1>
+            <p>选择一个环境，一键让已连接手机进入弱网。停止测试后会自动恢复正常网络。</p>
+          </div>
+          <div class="hero-signal" aria-hidden="true"><b></b><b></b><b></b><b></b><span>!</span></div>
+        </section>
+
+        <section class="preset-section">
+          <div class="section-title"><div><h2>选择模拟环境</h2><p>参数来自常见移动网络体验，可在下方继续微调</p></div><span id="selected-name">地铁</span></div>
+          <div class="preset-grid" id="preset-grid"></div>
+        </section>
+
+        <section class="control-grid">
+          <div class="parameter-panel">
+            <div class="section-title compact"><div><h2>当前弱网参数</h2><p>修改数值会自动切换为自定义场景</p></div><button class="text-button" id="reset-button">恢复场景参数</button></div>
+            <div class="parameter-grid">
+              <label><span>下行带宽</span><div><input id="down-input" type="number" min="16" max="100000" /><em>Kbps</em></div></label>
+              <label><span>上行带宽</span><div><input id="up-input" type="number" min="16" max="100000" /><em>Kbps</em></div></label>
+              <label><span>基础延迟</span><div><input id="latency-input" type="number" min="0" max="10000" /><em>ms</em></div></label>
+              <label><span>延迟抖动</span><div><input id="jitter-input" type="number" min="0" max="10000" /><em>ms</em></div></label>
+              <label><span>断流强度</span><div><input id="instability-input" type="number" min="0" max="100" /><em>%</em></div></label>
+            </div>
+          </div>
+
+          <aside class="run-panel">
+            <div class="run-heading"><div class="run-light"><i></i></div><div><strong id="run-title">弱网尚未开启</strong><span id="run-copy">选好设备与场景后即可开始</span></div></div>
+            <div class="live-stats">
+              <div><span>实时上行</span><strong id="live-up">0 KB/s</strong></div>
+              <div><span>实时下行</span><strong id="live-down">0 KB/s</strong></div>
+              <div><span>连接数</span><strong id="live-connections">0</strong></div>
+              <div><span>模拟中断</span><strong id="live-interruptions">0</strong></div>
+            </div>
+            <button class="primary" id="start-button">⚡ 一键开启弱网</button>
+            <button class="danger" id="stop-button" disabled>停止并恢复网络</button>
+          </aside>
+        </section>
+
+        <section class="safety-note">
+          <span>🛡</span>
+          <div><strong>配置与授权自动完成</strong><p>Test cat 会自动部署并配置开源手机端组件；若手机系统禁止自动确认，请按提示手动允许 VPN。测试流量只会送回当前电脑。</p></div>
+          <div class="steps"><b>1</b>连接手机<i></i><b>2</b>选择场景<i></i><b>3</b>一键开启</div>
+        </section>
+      </main>
+    </div>
+    <div class="toast" id="toast"></div>
+    <script src="weak-network.js"></script>
+  </body>
+</html>

@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>手机投屏 - Test cat</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body class="mirror-window-body">
+    <div class="mirror-window-shell">
+      <header class="mirror-window-titlebar">
+        <div class="mirror-window-brand">
+          <img src="../../assets/modules/mobile-mirror.png" alt="" />
+          <div><strong>手机投屏</strong><span>Test cat · Android</span></div>
+        </div>
+        <label class="mirror-pin" title="让投屏画面保持在其他软件上方">
+          <input id="mirror-always-on-top" type="checkbox" />
+          <span>窗口置顶</span>
+        </label>
+      </header>
+
+      <main class="mobile-mirror-standalone">
+        <div class="mirror-toolbar">
+          <div class="mirror-device-picker">
+            <label for="mirror-device-select">Android 设备</label>
+            <select id="mirror-device-select"><option value="">正在准备设备检测…</option></select>
+          </div>
+          <button class="secondary-button" id="mirror-refresh">刷新设备</button>
+          <button class="secondary-button" id="mirror-device-info-button" disabled>设备信息</button>
+          <div class="mirror-quality-controls">
+            <label>清晰度<select id="mirror-quality"><option value="720">流畅 720p</option><option value="1080" selected>高清 1080p</option><option value="1440">超清 1440p</option></select></label>
+            <label>帧率<select id="mirror-fps"><option value="30">30 FPS</option><option value="60" selected>60 FPS</option></select></label>
+          </div>
+          <button class="primary-button" id="mirror-start" disabled><span>⚡</span> 一键部署并投屏</button>
+          <button class="danger-button" id="mirror-stop" disabled>停止</button>
+        </div>
+
+        <div class="mirror-status-row">
+          <div class="mirror-status" id="mirror-status" data-phase="idle"><span></span><b id="mirror-status-text">等待连接</b></div>
+          <p>投屏窗口独立运行，你可以返回 Test cat 继续使用其他工具。</p>
+        </div>
+
+        <div class="mirror-layout">
+          <div class="mirror-stage" id="mirror-viewer">
+            <button class="mirror-focus-toggle" id="mirror-focus-mode" type="button" aria-pressed="false">⛶ 大画面</button>
+            <div class="mirror-placeholder" id="mirror-placeholder">
+              <img src="../../assets/modules/mobile-mirror.png" alt="" />
+              <h2 id="mirror-placeholder-title">连接一台 Android 手机</h2>
+              <p id="mirror-placeholder-text">开启 USB 调试并连接数据线，Test cat 会自动部署 scrcpy 服务。</p>
+              <ol><li>打开开发者选项</li><li>开启 USB 调试</li><li>连接数据线并允许调试</li></ol>
+            </div>
+            <canvas id="mirror-canvas" tabindex="0" aria-label="Android 手机画面" hidden></canvas>
+          </div>
+
+          <aside class="mirror-controls">
+              <div class="mirror-device-info">
+                <span>当前设备</span><strong id="mirror-device-name">尚未连接</strong>
+                <small>分辨率 <b id="mirror-resolution">—</b></small>
+                <small>画面方向 <b id="mirror-orientation">自动跟随</b></small>
+              </div>
+            <div class="mirror-control-group">
+              <h3>手机按键</h3>
+              <div class="mirror-key-grid">
+                <button data-android-key="4"><span>‹</span>返回</button>
+                <button data-android-key="3"><span>○</span>主页</button>
+                <button data-android-key="187"><span>▢</span>最近任务</button>
+              </div>
+            </div>
+            <div class="mirror-control-group">
+              <h3>画面工具</h3>
+              <button id="mirror-rotate">↻ 旋转屏幕</button>
+              <button id="mirror-screenshot">▣ 保存截图</button>
+              <button id="mirror-fullscreen">⛶ 全屏显示</button>
+              <button id="mirror-screen-off">◐ 关闭手机屏幕</button>
+            </div>
+              <div class="mirror-help">
+                <b>操作提示</b>
+                <p>直接点击或拖动手机画面即可操作；启动横屏游戏后画面会自动适配。</p>
+              </div>
+          </aside>
+        </div>
+      </main>
+    </div>
+
+    <div class="device-info-backdrop" id="device-info-modal" hidden>
+      <section class="device-info-dialog" role="dialog" aria-modal="true" aria-labelledby="device-info-title">
+        <header class="device-info-header">
+          <div><span>设备信息 / 环境检测</span><h2 id="device-info-title">缺陷环境信息</h2><p>通过 ADB 读取当前设备，生成可直接粘贴到缺陷单的正式文案。</p></div>
+          <button id="device-info-close" type="button" aria-label="关闭">×</button>
+        </header>
+        <div class="device-info-query">
+          <label>App 包名（选填）<input id="device-info-package" placeholder="留空则自动读取当前前台 App" /></label>
+          <button class="secondary-button" id="device-info-foreground" type="button">读取前台 App</button>
+          <button class="primary-button" id="device-info-refresh" type="button">刷新环境信息</button>
+        </div>
+        <div class="device-info-loading" id="device-info-loading"><span></span><b>正在读取设备环境信息…</b><small>首次读取通常需要几秒钟</small></div>
+        <div class="device-info-content" id="device-info-content" hidden>
+          <div class="device-info-grid" id="device-info-fields"></div>
+          <section class="device-report-panel">
+            <div><h3>缺陷环境文案</h3><p>已按测试缺陷单常用格式排版，可直接复制。</p></div>
+            <textarea id="device-info-report" readonly spellcheck="false"></textarea>
+          </section>
+        </div>
+        <footer class="device-info-actions">
+          <span id="device-info-message">读取结果仅保存在当前窗口中</span>
+          <button class="primary-button" id="device-info-copy" type="button" disabled>复制缺陷环境文案</button>
+        </footer>
+      </section>
+    </div>
+    <script src="mobile-mirror.bundle.js"></script>
+  </body>
+</html>

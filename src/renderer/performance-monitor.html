@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>性能监控 - Test cat</title>
+    <link rel="stylesheet" href="performance-monitor.css" />
+  </head>
+  <body>
+    <div class="performance-shell">
+      <header class="performance-titlebar">
+        <div class="performance-brand">
+          <img src="../../assets/modules/performance-monitor.png" alt="" />
+          <div><strong>性能监控</strong><span>Test cat · Android Performance Lab</span></div>
+        </div>
+        <div class="performance-window-status" id="performance-status" data-phase="idle"><i></i><span>等待开始</span></div>
+      </header>
+
+      <nav class="performance-tabs">
+        <button class="active" data-performance-page="monitor">实时监控</button>
+        <button data-performance-page="history">历史报告 <span id="report-count">0</span></button>
+        <button data-performance-page="compare">性能对比</button>
+      </nav>
+
+      <main>
+        <section class="performance-page active" id="performance-monitor-page">
+          <div class="performance-setup">
+            <div class="setup-row">
+              <label>Android 设备<select id="performance-device"><option value="">正在检测设备…</option></select></label>
+              <button class="secondary" id="performance-refresh">刷新</button>
+              <label class="package-field">应用包名（应用指标可选）<span class="package-input-row"><input id="performance-package" placeholder="例如 com.example.app" /><button class="secondary" id="performance-detect-app" type="button">读取当前应用</button></span></label>
+              <label>采样间隔<select id="performance-interval"><option value="1000">1 秒</option><option value="2000" selected>2 秒</option><option value="5000">5 秒</option></select></label>
+              <button class="secondary" id="performance-launch" disabled>启动应用并计时</button>
+            </div>
+            <label class="foreground-follow"><input id="performance-follow-app" type="checkbox" checked /><span>测试过程中自动跟随手机前台应用</span><small>切换到游戏或其他被测 App 后，约 6 秒内自动更新采集包名；桌面/系统界面不会被当成被测 App。</small></label>
+            <div class="measurement-policy">
+              <div><strong>严格实测模式</strong><span>只展示 Android 实际返回的数据；设备或厂商未公开的指标直接标记“不可用”，不生成模拟值。</span></div>
+              <label>网络延迟探测目标<input id="performance-network-target" value="8.8.8.8" maxlength="253" spellcheck="false" /></label>
+            </div>
+            <div class="metric-picker">
+              <div class="metric-picker-title"><div><strong>选择监控数据</strong><span>支持多选，测试期间可实时查看曲线</span></div><button id="performance-toggle-all">全选</button></div>
+              <div class="metric-options">
+                <label><input type="checkbox" value="cpu" checked /><span>⚙</span><b>CPU</b><small>设备% · App单核% · 频率/温度</small></label>
+                <label><input type="checkbox" value="memory" checked /><span>▤</span><b>内存</b><small>设备内存 · App PSS · PSS趋势</small></label>
+                <label><input type="checkbox" value="gpu" checked /><span>◇</span><b>GPU / 帧</b><small>设备GPU · App图形内存 · 前台FPS</small></label>
+                <label><input type="checkbox" value="network" checked /><span>⇅</span><b>网络</b><small>优先App流量 · ping 4包</small></label>
+                <label><input type="checkbox" value="disk" checked /><span>◫</span><b>磁盘</b><small>/data速率 · IO Wait · 剩余空间</small></label>
+                <label><input type="checkbox" value="app" checked /><span>▶</span><b>应用事件</b><small>冷启动 · 前台帧 · Crash/ANR累计</small></label>
+                <label><input type="checkbox" value="device" checked /><span>ϟ</span><b>设备电池</b><small>电池侧功率 · 电量 · 电池温度</small></label>
+              </div>
+            </div>
+            <div class="test-actions">
+              <p id="performance-session-summary">准备好后开始采集。将鼠标停在指标卡片上，可查看数据来源或不可用原因。</p>
+              <button class="primary" id="performance-start" disabled>● 开始性能测试</button>
+              <button class="danger" id="performance-stop" disabled>■ 结束测试</button>
+            </div>
+          </div>
+
+          <div class="performance-dashboard" id="performance-dashboard" hidden>
+            <div class="live-summary"><div><i></i><strong>实时采集中</strong><span id="performance-duration">00:00</span></div><span id="performance-sample-count">0 个采样点</span></div>
+            <div class="performance-kpis" id="performance-kpis"></div>
+            <div class="performance-charts" id="performance-charts"></div>
+          </div>
+        </section>
+
+        <section class="performance-page" id="performance-history-page">
+          <div class="report-toolbar"><div><h2>历史性能报告</h2><p>报告保存在本机，可导出为 Excel 可见表格。</p></div><button class="secondary" id="report-import">导入报告</button><input id="report-import-input" type="file" accept=".xls,.html,.json" hidden /></div>
+          <div class="report-list" id="report-list"></div>
+          <div class="report-empty" id="report-empty"><span>⌁</span><h3>还没有性能报告</h3><p>完成一次性能测试并命名后，报告会保存在这里。</p></div>
+        </section>
+
+        <section class="performance-page" id="performance-compare-page">
+          <div class="compare-picker">
+            <div><h2>性能报告对比</h2><p>选择两份报告，对比平均值、峰值与变化比例。</p></div>
+            <select id="compare-left"><option value="">选择基准报告</option></select><span>对比</span><select id="compare-right"><option value="">选择目标报告</option></select>
+            <button class="primary" id="compare-run">开始对比</button>
+          </div>
+          <div id="compare-result" hidden>
+            <div class="compare-heading"><div><strong id="compare-title">报告对比</strong><span>正值代表目标报告高于基准报告；不同单位不要横向比较。</span></div><button class="secondary" id="compare-export">导出对比 Excel</button></div>
+            <div class="compare-grid"><div class="compare-table-wrap"><table class="compare-table"><thead><tr><th>指标</th><th>基准平均</th><th>目标平均</th><th>变化</th></tr></thead><tbody id="compare-table-body"></tbody></table></div><div class="compare-chart-card"><select id="compare-metric"></select><canvas id="compare-chart"></canvas></div></div>
+          </div>
+          <div class="report-empty" id="compare-empty"><span>⇄</span><h3>选择两份报告开始对比</h3><p>至少需要两份历史报告。</p></div>
+        </section>
+      </main>
+    </div>
+
+    <div class="performance-modal" id="report-name-modal" hidden>
+      <form id="report-name-form">
+        <div><h2>保存性能测试</h2><p>给本次测试起一个容易识别的名称。</p></div>
+        <label>报告名称<input id="report-name" maxlength="50" required placeholder="例如：登录页优化前基线" /></label>
+        <label>测试备注<textarea id="report-note" maxlength="200" rows="3" placeholder="设备、版本、测试场景等"></textarea></label>
+        <div class="modal-actions"><button class="secondary" type="button" id="report-discard">暂不保存</button><button class="primary" type="submit">保存到历史记录</button></div>
+      </form>
+    </div>
+    <div class="performance-toast" id="performance-toast"></div>
+    <script src="performance-monitor.js"></script>
+  </body>
+</html>

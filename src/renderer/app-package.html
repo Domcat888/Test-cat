@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>安装包管理 - Test cat</title>
+    <link rel="stylesheet" href="app-package.css" />
+  </head>
+  <body>
+    <div class="package-shell">
+      <header class="package-titlebar">
+        <div class="package-brand">
+          <img src="../../assets/modules/app-package.png" alt="" />
+          <div><strong>安装包管理</strong><span>Test cat · APK / IPA Lab</span></div>
+        </div>
+        <div class="title-status" id="title-status"><i></i><span>等待选择安装包</span></div>
+      </header>
+
+      <main>
+        <section class="package-hero">
+          <button class="drop-card" id="package-picker">
+            <span>📦</span>
+            <strong>选择 APK / IPA</strong>
+            <small>点击选择文件，也可以直接拖到这里</small>
+          </button>
+          <div class="package-summary" id="package-summary">
+            <div class="empty-copy">
+              <b>先选一个安装包</b>
+              <span>会自动读取包名、版本、签名、SDK、权限和文件指纹。</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="workspace-grid">
+          <aside class="device-panel">
+            <div class="section-title">
+              <div><h2>Android 设备</h2><p>支持多设备批量安装、卸载和清数据</p></div>
+              <button class="secondary" id="refresh-devices">刷新</button>
+            </div>
+            <div class="device-list" id="device-list"></div>
+            <div class="empty-box" id="device-empty">未检测到设备，请连接 Android 并开启 USB 调试。</div>
+          </aside>
+
+          <section class="action-panel">
+            <div class="section-title">
+              <div><h2>APK 安装</h2><p>把当前选择的 APK 安装到选中设备</p></div>
+            </div>
+            <div class="option-grid">
+              <label><input id="allow-downgrade" type="checkbox" checked /><span>允许降级安装</span></label>
+              <label><input id="grant-permissions" type="checkbox" checked /><span>安装后授予运行时权限</span></label>
+              <label><input id="replace-existing" type="checkbox" checked /><span>覆盖安装</span></label>
+            </div>
+            <div class="action-row">
+              <button class="primary" id="install-button" disabled>一键安装到选中设备</button>
+            </div>
+            <div class="result-list" id="result-list"></div>
+          </section>
+        </section>
+
+        <section class="installed-panel">
+          <div class="section-title">
+            <div><h2>设备已安装应用</h2><p>读取选中设备上的安装包，选中后可清除数据或卸载</p></div>
+            <div class="installed-tools">
+              <label><input id="include-system" type="checkbox" /><span>包含系统应用</span></label>
+              <button class="secondary" id="load-installed">读取安装包</button>
+            </div>
+          </div>
+          <div class="installed-toolbar">
+            <select id="installed-device"></select>
+            <input id="installed-search" placeholder="搜索包名，例如 com.demo.app" />
+            <button class="secondary" id="clear-selected" disabled>清除选中应用数据</button>
+            <button class="danger" id="uninstall-selected" disabled>卸载选中应用</button>
+          </div>
+          <div class="installed-list" id="installed-list"></div>
+          <div class="empty-box" id="installed-empty">请选择一台在线设备，然后点击“读取安装包”。</div>
+        </section>
+
+        <section class="detail-grid">
+          <section class="detail-panel">
+            <div class="section-title compact">
+              <div><h2>安装包详情</h2><p>签名、权限和基础元信息</p></div>
+            </div>
+            <div class="info-grid" id="info-grid"></div>
+            <div class="permission-box" id="permission-box"></div>
+          </section>
+
+          <section class="compare-panel">
+            <div class="section-title compact">
+              <div><h2>历史版本对比</h2><p>选择第二个包后对比版本和指纹差异</p></div>
+              <button class="secondary" id="compare-picker">选择对比包</button>
+            </div>
+            <div class="compare-result" id="compare-result"></div>
+          </section>
+        </section>
+      </main>
+    </div>
+    <div class="toast" id="toast"></div>
+    <script src="app-package.js"></script>
+  </body>
+</html>

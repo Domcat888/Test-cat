@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>贴屏截图 - Test cat</title>
+    <link rel="stylesheet" href="capture.css" />
+  </head>
+  <body class="pin-body">
+    <div class="pin-shell" id="pin-shell">
+      <header class="pin-titlebar">
+        <strong>贴屏截图</strong>
+        <input id="opacity-input" type="range" min="35" max="100" value="100" title="透明度" />
+        <button id="edit-button">编辑</button>
+        <button id="copy-button">复制</button>
+        <button id="save-button">保存</button>
+        <button id="close-button">×</button>
+      </header>
+      <main class="pin-image-wrap"><img id="pin-image" alt="贴屏截图" draggable="false" /></main>
+    </div>
+    <script src="capture-pin.js"></script>
+  </body>
+</html>

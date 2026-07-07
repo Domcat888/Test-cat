@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light" />
+    <title>月薪喵 - Test cat</title>
+    <link rel="stylesheet" href="companion-pet.css" />
+  </head>
+  <body>
+    <main class="pet-stage" aria-label="陪伴宠物月薪喵">
+      <section class="speech-card" id="speech-card" aria-live="polite">
+        <strong id="speech-title">月薪喵</strong>
+        <p id="speech-message">月薪喵上线，今天也一起努力。</p>
+      </section>
+
+      <button class="hide-button" id="hide-button" type="button" title="让月薪喵回窝" aria-label="让月薪喵回窝">×</button>
+
+      <button class="pet-hitbox" id="pet-hitbox" type="button" aria-label="摸摸月薪喵">
+        <span class="cat-shadow"></span>
+        <span class="heart heart-one">♥</span>
+        <span class="heart heart-two">♡</span>
+        <img
+          class="salary-cat-sprite"
+          id="salary-cat-sprite"
+          src="../../assets/companion-pet/yuexinmiao/dance-00.png"
+          alt="月薪喵"
+          draggable="false"
+        />
+      </button>
+    </main>
+    <script src="companion-pet.js"></script>
+  </body>
+</html>

@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>文件对比 - Test cat</title>
+    <link rel="stylesheet" href="file-compare.css" />
+  </head>
+  <body>
+    <div class="compare-shell">
+      <header class="titlebar">
+        <div class="title-brand">
+          <img src="../../assets/modules/file-compare.png" alt="" />
+          <div><strong>文件对比</strong><span>Test cat · 本地安全对比</span></div>
+        </div>
+        <div class="title-status" id="title-status"><i></i><span>等待选择文件</span></div>
+      </header>
+
+      <main>
+        <section class="control-panel">
+          <div class="mode-tabs" role="tablist">
+            <button class="active" data-mode="file">文件对比</button>
+            <button data-mode="directory">文件夹对比</button>
+          </div>
+          <div class="path-row">
+            <button class="path-picker drop-zone" id="left-picker" data-side="left">
+              <span class="side-label">左侧</span><strong id="left-name">选择文件</strong><small id="left-path">点击选择，也可以拖到这里</small>
+            </button>
+            <button class="swap-button" id="swap-button" title="交换左右两侧">⇄</button>
+            <button class="path-picker drop-zone" id="right-picker" data-side="right">
+              <span class="side-label">右侧</span><strong id="right-name">选择文件</strong><small id="right-path">点击选择，也可以拖到这里</small>
+            </button>
+          </div>
+          <div class="options-row file-options" id="file-options">
+            <label><input type="checkbox" id="ignore-space" /> 忽略空格</label>
+            <label><input type="checkbox" id="ignore-case" /> 忽略大小写</label>
+            <label><input type="checkbox" id="ignore-empty" /> 忽略空行</label>
+            <label><input type="checkbox" id="json-sort" checked /> JSON 忽略字段顺序</label>
+          </div>
+          <div class="options-row directory-options" id="directory-options" hidden>
+            <label>判断方式<select id="directory-compare-by"><option value="quick">大小和时间</option><option value="content">内容哈希（更准确）</option></select></label>
+            <label>扩展名<input id="directory-extensions" placeholder="例如：js,json,xml" /></label>
+            <label>排除<input id="directory-exclude" value=".DS_Store,node_modules,.git" /></label>
+          </div>
+          <div class="action-row">
+            <button class="primary" id="compare-button">开始对比</button>
+            <button id="previous-button" disabled>↑ 上一处</button>
+            <button id="next-button" disabled>↓ 下一处</button>
+            <label class="difference-toggle"><input type="checkbox" id="only-differences" /><span></span><b>只显示差异</b></label>
+            <span class="action-spacer"></span>
+            <button id="history-button">历史记录</button>
+            <button id="export-html" disabled>导出 HTML</button>
+            <button id="export-excel" disabled>导出 Excel</button>
+          </div>
+        </section>
+
+        <section class="result-panel">
+          <div class="result-summary" id="result-summary" hidden>
+            <div><span>对比结果</span><strong id="summary-title">—</strong></div>
+            <ul id="summary-stats"></ul>
+            <div class="save-actions" id="save-actions" hidden>
+              <button id="save-left">保存左侧</button><button id="save-right">保存右侧</button>
+            </div>
+          </div>
+
+          <div class="empty-state" id="empty-state">
+            <img src="../../assets/modules/file-compare.png" alt="" />
+            <h2>选择两份内容，找出每一处不同</h2>
+            <p>支持文本、代码、JSON、XML、CSV、XLSX、图片、二进制和整个文件夹。</p>
+          </div>
+
+          <div class="view text-view" id="text-view" hidden>
+            <div class="column-heads"><span id="left-column-title">左侧</span><span id="right-column-title">右侧</span></div>
+            <div class="diff-workspace">
+              <div class="diff-scroll" id="text-diff"></div>
+              <aside class="diff-overview">
+                <strong>文件预览</strong>
+                <div class="diff-minimap" id="diff-minimap" title="点击差异色块快速定位">
+                  <div class="minimap-page" id="minimap-page"></div>
+                  <div class="minimap-viewport" id="minimap-viewport"></div>
+                </div>
+                <small>红色删除<br />绿色新增<br />黄色修改</small>
+              </aside>
+            </div>
+          </div>
+
+          <div class="view table-view" id="table-view" hidden>
+            <div class="table-toolbar"><label>工作表<select id="sheet-picker"></select></label><span id="table-note"></span></div>
+            <div class="spreadsheet-compare">
+              <section class="spreadsheet-side">
+                <header><span>左侧</span><strong id="left-sheet-name">—</strong></header>
+                <div class="spreadsheet-scroll" id="left-sheet-scroll"><table class="spreadsheet-grid" id="left-sheet-grid"></table></div>
+              </section>
+              <div class="spreadsheet-divider"><span>⇄</span></div>
+              <section class="spreadsheet-side">
+                <header><span>右侧</span><strong id="right-sheet-name">—</strong></header>
+                <div class="spreadsheet-scroll" id="right-sheet-scroll"><table class="spreadsheet-grid" id="right-sheet-grid"></table></div>
+              </section>
+            </div>
+          </div>
+
+          <div class="view image-view" id="image-view" hidden>
+            <div class="image-grid" id="image-grid"><figure class="image-source"><figcaption>左侧预览</figcaption><img id="left-image" alt="左侧图片" /></figure><figure class="image-source"><figcaption>右侧预览</figcaption><img id="right-image" alt="右侧图片" /></figure><figure class="image-difference"><figcaption>差异预览图（红色为变化区域）</figcaption><canvas id="difference-canvas"></canvas></figure></div>
+          </div>
+
+          <div class="view binary-view" id="binary-view" hidden>
+            <div class="column-heads"><span>左侧十六进制</span><span>右侧十六进制</span></div>
+            <div class="binary-scroll" id="binary-diff"></div>
+          </div>
+
+          <div class="view directory-view" id="directory-view" hidden>
+            <div class="directory-toolbar">
+              <div class="status-filters"><button class="active" data-status="all">全部</button><button data-status="different">内容不同</button><button data-status="left-only">仅左侧</button><button data-status="right-only">仅右侧</button><button data-status="same">相同</button></div>
+              <span>双击文件可进入详细对比；同步操作会要求再次确认。</span>
+            </div>
+            <div class="directory-scroll"><table><thead><tr><th>相对路径</th><th>左侧</th><th>右侧</th><th>状态</th><th>安全同步</th></tr></thead><tbody id="directory-body"></tbody></table></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <div class="modal-backdrop" id="history-modal" hidden>
+      <section class="modal">
+        <header><div><h2>最近对比</h2><p>记录只保存在当前电脑中</p></div><button id="close-history">×</button></header>
+        <div class="history-list" id="history-list"></div>
+        <footer><button id="clear-history">清空历史</button></footer>
+      </section>
+    </div>
+    <div class="toast" id="toast"></div>
+    <script src="file-compare-core.js"></script>
+    <script src="file-compare.js"></script>
+  </body>
+</html>

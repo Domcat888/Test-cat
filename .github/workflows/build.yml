@@ -1,0 +1,40 @@
+name: Build desktop packages
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-13
+            command: npm run dist:mac -- --x64
+            artifact: testhub-macos-intel
+          - os: macos-14
+            command: npm run dist:mac -- --arm64
+            artifact: testhub-macos-apple-silicon
+          - os: windows-latest
+            command: npm run dist:win -- --x64
+            artifact: testhub-windows
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: ${{ matrix.command }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.exe
+            release/*.yml
+            release/*.blockmap
