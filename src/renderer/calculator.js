@@ -7,7 +7,9 @@ let finished = false;
 document.body.dataset.platform = /Mac/i.test(navigator.platform) ? 'darwin' : 'other';
 
 function applyTheme() {
-  document.body.classList.toggle('dark', localStorage.getItem('test-cat-theme') === 'dark');
+  const theme = localStorage.getItem('test-cat-theme');
+  document.body.classList.toggle('dark', theme === 'dark');
+  document.body.classList.toggle('purple-eye', theme === 'purple');
 }
 
 function displayExpression(value) {

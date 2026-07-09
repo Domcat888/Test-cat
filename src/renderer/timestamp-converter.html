@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>时间戳转换 - Test cat</title>
+    <link rel="stylesheet" href="timestamp-converter.css" />
+  </head>
+  <body>
+    <div class="timestamp-shell">
+      <header class="timestamp-titlebar">
+        <div class="timestamp-brand">
+          <img src="../../assets/modules/timestamp-converter.png" alt="" />
+          <div><strong>时间戳转换</strong><span>Test cat · Timestamp Lab</span></div>
+        </div>
+        <div class="title-status done" id="title-status"><i></i><span>已准备好转换</span></div>
+      </header>
+
+      <main>
+        <section class="timestamp-hero">
+          <aside class="control-panel">
+            <div class="section-title">
+              <div><h2>时间戳 → 日期</h2><p>支持批量粘贴，自动识别秒 / 毫秒 / 微秒 / 纳秒</p></div>
+            </div>
+
+            <label class="field">
+              <span>时间戳</span>
+              <textarea id="timestamp-input" spellcheck="false" placeholder="例如：1720425600&#10;1720425600000&#10;支持换行、空格、逗号分隔"></textarea>
+            </label>
+
+            <label class="field">
+              <span>输入单位</span>
+              <select id="timestamp-unit">
+                <option value="auto">自动识别</option>
+                <option value="second">秒（10 位常见）</option>
+                <option value="millisecond">毫秒（13 位常见）</option>
+                <option value="microsecond">微秒（16 位常见）</option>
+                <option value="nanosecond">纳秒（19 位常见）</option>
+              </select>
+            </label>
+
+            <div class="action-grid">
+              <button class="primary" id="parse-timestamp" type="button">转换时间戳</button>
+              <button class="secondary" id="use-current-timestamp" type="button">填入当前时间</button>
+              <button class="secondary" id="copy-timestamp-results" type="button" disabled>复制结果</button>
+              <button class="ghost" id="clear-timestamp" type="button">清空</button>
+            </div>
+          </aside>
+
+          <section class="preview-panel">
+            <div class="section-title">
+              <div><h2>转换结果</h2><p>本地时间、UTC、秒级和毫秒级时间戳都会列出来</p></div>
+            </div>
+            <div class="stat-grid">
+              <div><span>本地时区</span><strong id="stat-timezone">—</strong></div>
+              <div><span>识别数量</span><strong id="stat-count">0</strong></div>
+              <div><span>当前秒级</span><strong id="stat-second">—</strong></div>
+              <div><span>当前毫秒级</span><strong id="stat-ms">—</strong></div>
+            </div>
+            <div class="result-list" id="timestamp-results">
+              <div class="empty">粘贴时间戳后点击“转换时间戳”。</div>
+            </div>
+          </section>
+        </section>
+
+        <section class="date-panel">
+          <div class="section-title">
+            <div><h2>日期 → 时间戳</h2><p>按本地时间或 UTC 解析，适合接口参数和日志排查</p></div>
+            <div class="mini-actions">
+              <button class="ghost" id="fill-current-date" type="button">当前时间</button>
+              <button class="ghost" id="copy-date-result" type="button" disabled>复制</button>
+            </div>
+          </div>
+          <div class="date-grid">
+            <label class="field">
+              <span>日期时间</span>
+              <input id="date-input" type="datetime-local" step="1" />
+            </label>
+            <label class="field">
+              <span>毫秒</span>
+              <input id="date-ms" type="number" min="0" max="999" value="0" />
+            </label>
+            <label class="field">
+              <span>解析方式</span>
+              <select id="date-zone">
+                <option value="local">按本地时间解析</option>
+                <option value="utc">按 UTC 时间解析</option>
+              </select>
+            </label>
+            <button class="primary" id="convert-date" type="button">转换日期</button>
+          </div>
+          <div class="date-output" id="date-output">
+            <div class="empty">选择日期后点击“转换日期”。</div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <div class="toast" id="toast"></div>
+    <script src="timestamp-converter.js"></script>
+  </body>
+</html>

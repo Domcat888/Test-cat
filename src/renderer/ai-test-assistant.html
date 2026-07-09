@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>AI 测试助手 - Test cat</title>
+    <link rel="stylesheet" href="ai-test-assistant.css" />
+  </head>
+  <body>
+    <div class="ai-shell">
+      <header class="ai-titlebar">
+        <div class="ai-brand">
+          <img src="../../assets/modules/ai-test-assistant.png" alt="" />
+          <div><strong>AI 测试助手</strong><span>Test cat · AI Lab</span></div>
+        </div>
+        <div class="title-actions">
+          <button class="ghost" id="refresh-settings" type="button">刷新配置</button>
+          <div class="title-status" id="title-status"><i></i><span>正在读取 AI 配置…</span></div>
+        </div>
+      </header>
+
+      <main>
+        <section class="toolbox">
+          <article class="tool-card active">
+            <span>01</span>
+            <strong>测试用例生成</strong>
+            <p>需求提取、附加条件、AI 生成、Excel / XMind 导出。</p>
+          </article>
+          <article class="tool-card disabled">
+            <span>02</span>
+            <strong>报错解释</strong>
+            <p>后续可接安装失败、ADB 报错、日志异常解释。</p>
+          </article>
+          <article class="tool-card disabled">
+            <span>03</span>
+            <strong>Bug 单生成</strong>
+            <p>根据现象、截图和日志整理复现步骤。</p>
+          </article>
+          <article class="tool-card disabled">
+            <span>04</span>
+            <strong>日志总结</strong>
+            <p>从 logcat 或业务日志里提炼风险点。</p>
+          </article>
+        </section>
+
+        <section class="workspace">
+          <section class="panel requirement-panel">
+            <div class="section-title">
+              <div><h2>需求内容</h2><p>支持拖入文件或手动粘贴，先提取再生成。</p></div>
+              <button class="ghost" id="select-file" type="button">选择需求文件</button>
+            </div>
+            <div class="drop-zone" id="drop-zone">
+              <div>
+                <strong id="requirement-source">拖入 txt / md / docx / xlsx / 图片文件</strong>
+                <span>Word / Excel 里的图片会作为图片附件交给支持视觉的模型。</span>
+              </div>
+              <small id="file-status">未选择文件</small>
+            </div>
+            <div class="requirement-preview-card">
+              <div class="requirement-preview-head">
+                <div><strong>需求预览</strong><span id="requirement-image-status">图片附件 0 张</span></div>
+                <div class="mini-actions">
+                  <button class="ghost" id="open-requirement-editor" type="button">打开大编辑器</button>
+                  <button class="ghost danger" id="clear-requirement" type="button">清空需求</button>
+                </div>
+              </div>
+              <pre id="requirement-preview">还没有需求内容。点击“打开大编辑器”粘贴需求，或直接拖入需求文件。</pre>
+            </div>
+            <label class="field">
+              <span>附加条件</span>
+              <textarea id="extra-conditions" spellcheck="false" placeholder="例如：只关注登录注册；埋点部分不用看；暂不考虑兼容低版本系统。"></textarea>
+            </label>
+            <div class="stat-grid">
+              <div><span>需求字数</span><strong id="stat-chars">0</strong></div>
+              <div><span>来源文件</span><strong id="stat-file">手动输入</strong></div>
+              <div><span>图片附件</span><strong id="stat-images">0</strong></div>
+            </div>
+          </section>
+
+          <section class="panel prompt-panel">
+            <div class="section-title">
+              <div><h2>生成设置</h2><p>提示词完全读取设置内配置，这里只做查看和编辑入口。</p></div>
+              <span class="config-pill" id="config-pill">读取中</span>
+            </div>
+            <div class="prompt-summary-card">
+              <div class="prompt-summary-head">
+                <div><strong>测试用例生成提示词</strong><span id="prompt-length">0 字</span></div>
+                <button class="ghost" id="open-prompt-editor" type="button">编辑提示词</button>
+              </div>
+              <pre id="prompt-preview">设置内还没有测试用例提示词，点击“编辑提示词”配置。</pre>
+            </div>
+            <div class="prompt-tips compact">
+              <b>建议：</b>
+              <p>为了导出 Excel / XMind 更整齐，提示词里最好要求 AI 输出 Markdown 表格。</p>
+            </div>
+            <div class="action-grid">
+              <button class="primary" id="generate-testcases" type="button">生成测试用例</button>
+            </div>
+          </section>
+
+          <section class="panel result-panel">
+            <div class="section-title">
+              <div><h2>生成结果</h2><p>结果可复制，也可以导出为 Excel 或 XMind。</p></div>
+              <div class="mini-actions">
+                <button class="ghost" id="copy-result" type="button" disabled>复制</button>
+                <button class="ghost" id="export-excel" type="button" disabled>导出 Excel</button>
+                <button class="ghost" id="export-xmind" type="button" disabled>导出 XMind</button>
+              </div>
+            </div>
+            <textarea id="result-text" spellcheck="false" placeholder="生成后的测试用例会显示在这里。"></textarea>
+            <div class="result-footer">
+              <span id="usage-info">等待生成</span>
+              <button class="ghost danger" id="clear-result" type="button" disabled>清空结果</button>
+            </div>
+          </section>
+        </section>
+      </main>
+    </div>
+    <div class="editor-backdrop" id="requirement-modal" hidden>
+      <section class="editor-dialog large-editor">
+        <header>
+          <div><h2>需求大编辑器</h2><p>长需求在这里看和改，主界面只显示预览。</p></div>
+          <button class="close-button" id="close-requirement-editor" type="button">×</button>
+        </header>
+        <textarea id="requirement-editor-text" spellcheck="false" placeholder="例如：粘贴产品需求、验收标准、接口说明，或拖入需求文件后一键提取。"></textarea>
+        <footer>
+          <span id="requirement-editor-count">0 字</span>
+          <div>
+            <button class="secondary" id="cancel-requirement-editor" type="button">取消</button>
+            <button class="primary" id="apply-requirement-editor" type="button">应用到需求</button>
+          </div>
+        </footer>
+      </section>
+    </div>
+    <div class="editor-backdrop" id="prompt-modal" hidden>
+      <section class="editor-dialog prompt-editor">
+        <header>
+          <div><h2>测试用例提示词设置</h2><p>保存后写入设置，生成时只读取这里的提示词。</p></div>
+          <button class="close-button" id="close-prompt-editor" type="button">×</button>
+        </header>
+        <textarea id="prompt-editor-text" spellcheck="false" placeholder="例如：按模块、用例标题、前置条件、操作步骤、预期结果、优先级输出 Markdown 表格。"></textarea>
+        <footer>
+          <span id="prompt-editor-count">0 字</span>
+          <div>
+            <button class="secondary" id="cancel-prompt-editor" type="button">取消</button>
+            <button class="primary" id="save-prompt-editor" type="button">保存到设置</button>
+          </div>
+        </footer>
+      </section>
+    </div>
+    <div class="toast" id="toast"></div>
+    <script src="ai-test-assistant.js"></script>
+  </body>
+</html>

@@ -19,3 +19,4 @@
 .calculator-keypad .equals:hover { color: white; background: var(--primary-dark); }
 .calculator-hint { flex: 0 0 auto; margin: 11px 0 0; color: var(--muted); font-size: 9px; text-align: center; }
 body.dark .calculator-keypad .operator { color: #8db8ff; background: #243a59; }
+body.purple-eye .calculator-keypad .operator { color: #704bb8; background: #f1e8ff; }

@@ -37,7 +37,7 @@
           <span>🐾</span>
           <p><b>保持专注</b><br />把常用测试工具放到一个地方。</p>
         </div>
-        <div class="version">Test cat · v0.8.3</div>
+        <div class="version">Test cat · v0.8.4</div>
       </aside>
 
       <main class="main">
@@ -125,14 +125,71 @@
           <div class="settings-card">
             <h2>外观</h2>
             <div class="setting-row">
-              <div><strong>深色模式</strong><p>切换 Test cat 的界面主题</p></div>
+              <div><strong>主题风格</strong><p>选择浅色、深色或紫色护眼，适合长时间盯屏测试。</p></div>
+              <select id="theme-select" class="setting-select" aria-label="主题风格">
+                <option value="light">浅色清爽</option>
+                <option value="dark">深色模式</option>
+                <option value="purple">紫色护眼</option>
+              </select>
+            </div>
+            <div class="setting-row">
+              <div><strong>深色模式</strong><p>快速在浅色和深色之间切换；紫色护眼可在上方选择。</p></div>
               <label class="switch"><input id="theme-switch" type="checkbox" /><span></span></label>
+            </div>
+          </div>
+          <div class="settings-card ai-settings-card">
+            <div class="settings-card-title">
+              <div><h2>AI 设置</h2><p>默认支持 OpenAI 兼容接口；Key 只保存在本机，用于 AI 测试助手。</p></div>
+              <div class="settings-title-actions">
+                <button class="secondary-button compact-button" id="ai-lock-settings" type="button">锁定配置</button>
+                <span id="ai-settings-status" class="setting-status">正在读取配置…</span>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div><strong>启用 AI 功能</strong><p>关闭后 AI 测试助手不会发起模型请求，但仍可打开窗口查看内容。</p></div>
+              <label class="switch"><input id="ai-enabled" type="checkbox" /><span></span></label>
+            </div>
+            <div class="ai-setting-grid">
+              <label>
+                <span>Base URL</span>
+                <input id="ai-base-url" placeholder="例如：https://api.openai.com/v1" />
+              </label>
+              <label>
+                <span>Model</span>
+                <input id="ai-model" placeholder="例如：gpt-4.1-mini / deepseek-chat" />
+              </label>
+              <label>
+                <span>API Key</span>
+                <input id="ai-api-key" type="password" placeholder="例如：sk-..." autocomplete="off" />
+              </label>
+              <label>
+                <span>Temperature</span>
+                <input id="ai-temperature" type="number" min="0" max="2" step="0.1" placeholder="例如：0.2" />
+              </label>
+            </div>
+            <div class="ai-prompt-field">
+              <div class="ai-prompt-head">
+                <div><strong>测试用例生成提示词</strong><p>点击打开大编辑器，关闭窗口后自动保存到设置。</p></div>
+                <button class="secondary-button" id="ai-open-prompt-editor" type="button">编辑提示词</button>
+              </div>
+              <div class="ai-prompt-summary" id="ai-prompt-summary">还没有配置提示词</div>
+            </div>
+            <div class="capture-actions">
+              <button class="secondary-button" id="ai-save-settings" type="button">保存 AI 设置</button>
+              <button class="primary-button" id="ai-test-connection" type="button">测试连接</button>
             </div>
           </div>
           <div class="settings-card companion-settings-card">
             <div class="settings-card-title">
               <div><h2 id="companion-pet-title">陪伴宠物 · 月薪喵</h2><p id="companion-pet-description">从录屏里提取的月薪喵，会在桌面随机移动、跳舞，并提醒你喝水、站起来活动。</p></div>
               <span id="companion-pet-status" class="setting-status">正在读取配置…</span>
+            </div>
+            <div class="setting-row">
+              <div><strong>选择宠物</strong><p>已接入月薪喵和 Doro；后面新增宠物时会继续出现在这里。</p></div>
+              <select class="setting-select" id="companion-pet-active" aria-label="选择陪伴宠物">
+                <option value="yuexinmiao">月薪喵</option>
+                <option value="doro">Doro</option>
+              </select>
             </div>
             <div class="setting-row">
               <div><strong id="companion-pet-enabled-title">让月薪喵出现在桌面</strong><p id="companion-pet-enabled-description">关闭后月薪喵会回窝，不再显示或提醒。</p></div>
@@ -171,7 +228,7 @@
               <span id="capture-shortcut-status" class="setting-status">正在读取配置…</span>
             </div>
             <div class="setting-row">
-              <div><strong>启用全局快捷键</strong><p>开启后，即使 Test cat 不在前台也可以呼出截图或录屏。</p></div>
+              <div><strong>启用截图与录屏</strong><p>关闭后不会响应快捷键，也不能从设置页启动截图或录屏。</p></div>
               <label class="switch"><input id="capture-enabled" type="checkbox" /><span></span></label>
             </div>
             <div class="capture-setting-grid">
@@ -203,7 +260,7 @@
           <div class="settings-card about-card">
             <div class="about-product">
               <img src="../../assets/icon.png" alt="" />
-              <div><h2>Test cat</h2><p>跨平台测试工具工作台 · 版本 0.8.3</p></div>
+              <div><h2>Test cat</h2><p>跨平台测试工具工作台 · 版本 0.8.4</p></div>
             </div>
             <div class="project-meta-panel">
               <h3>项目信息</h3>
@@ -225,13 +282,17 @@
             <div class="changelog-panel">
               <h3>更新日志</h3>
               <article class="changelog-entry latest">
-                <div><strong>v0.8.3</strong><time>2026-07-07</time><span>当前版本</span></div>
+                <div><strong>v0.8.4</strong><time>2026-07-08</time><span>当前版本</span></div>
                 <ul>
-                  <li>优化性能监控卡片文案，明确整机、目标 App、前台画面、采样间隔和会话累计等口径。</li>
-                  <li>目标 App CPU 改为“单核口径”说明，并同步显示等效核心数，避免误解为只能 0–100%。</li>
-                  <li>App 内存明确为 PSS，FPS、卡顿帧、网络速率、磁盘速率和电池功率补充来源说明。</li>
-                  <li>性能图表、报告对比和导出 Excel 同步显示统一单位与口径说明。</li>
-                  <li>继续保持严格实测模式：取不到真实数据时显示不可用，不生成模拟数据。</li>
+                  <li>新增紫色护眼主题，支持浅色、深色和紫色护眼三种风格切换。</li>
+                  <li>截图与录屏总开关已生效：关闭后不响应快捷键，也不能从设置页启动采集。</li>
+                  <li>优化录屏稳定性，降低偶现只录到 1 秒的概率；录屏优先保存 MP4，不支持时自动回退 WebM。</li>
+                  <li>首页 TodoList 按优先级自动排序，未完成和高优先级任务会排在更前面。</li>
+                  <li>新增时间戳转换工具，支持秒、毫秒、微秒、纳秒时间戳和日期时间互转。</li>
+                  <li>新增公式运算工具，支持自定义变量词、公式模板、代入计算、历史记录和公式/变量词导入导出。</li>
+                  <li>公式运算默认页优化为空状态，输入框统一补充“例如”提示，打开后更清爽。</li>
+                  <li>公式运算变量词交互优化：不再显示固定快捷词，新生成或导入的变量词可记录、点击插入和一键删除。</li>
+                  <li>紫色护眼主题同步到主界面、计算器和手机投屏窗口。</li>
                 </ul>
               </article>
             </div>
@@ -264,6 +325,19 @@
           <button type="submit" class="primary-button">保存模块</button>
         </div>
       </form>
+    </div>
+    <div class="modal-backdrop" id="ai-prompt-modal" hidden>
+      <section class="modal ai-prompt-modal">
+        <div class="modal-header">
+          <div><h2>测试用例生成提示词</h2><p>关闭窗口会自动保存，生成测试用例时会读取这里的内容。</p></div>
+          <button type="button" class="close-button" id="ai-close-prompt-editor" aria-label="关闭">×</button>
+        </div>
+        <label>提示词内容<textarea id="ai-prompt-editor" rows="14" placeholder="例如：让 AI 按模块、优先级、前置条件、步骤、预期结果输出 Markdown 表格。"></textarea></label>
+        <div class="modal-actions">
+          <span class="modal-count" id="ai-prompt-count">0 字</span>
+          <button type="button" class="primary-button" id="ai-done-prompt-editor">关闭并保存</button>
+        </div>
+      </section>
     </div>
     <div class="toast" id="toast" role="status"></div>
     <script src="app.js"></script>

@@ -21,6 +21,7 @@ const { WeakNetworkService } = require('./weak-network-service');
 const { FileCompareService } = require('./file-compare-service');
 const { LogAnalysisService } = require('./log-analysis-service');
 const { AppPackageService } = require('./app-package-service');
+const { AiTestAssistantService } = require('./ai-test-assistant-service');
 
 const isMac = process.platform === 'darwin';
 let mainWindow = null;
@@ -32,6 +33,9 @@ let fileCompareWindow = null;
 let logAnalysisWindow = null;
 let appPackageWindow = null;
 let mockDataWindow = null;
+let timestampConverterWindow = null;
+let formulaCalculatorWindow = null;
+let aiTestAssistantWindow = null;
 let companionPetWindow = null;
 let recorderWindow = null;
 let recordingBorderWindow = null;
@@ -42,6 +46,7 @@ let weakNetworkService = null;
 let fileCompareService = null;
 let logAnalysisService = null;
 let appPackageService = null;
+let aiTestAssistantService = null;
 let ipcReady = false;
 let quitCleanupStarted = false;
 let quitCleanupFinished = false;
@@ -49,6 +54,7 @@ let captureSettings = null;
 let captureShortcutStatus = { enabled: true, screenshot: null, recorder: null };
 let activeCaptureShortcuts = [];
 let companionPetSettings = null;
+let aiSettings = null;
 let companionPetWalkTimer = null;
 let companionPetAnimationTimer = null;
 let companionPetDragState = null;
@@ -74,6 +80,16 @@ const DEFAULT_COMPANION_PET_SETTINGS = Object.freeze({
   standReminderMinutes: 45
 });
 
+const DEFAULT_AI_SETTINGS = Object.freeze({
+  enabled: true,
+  baseUrl: '',
+  model: '',
+  apiKey: '',
+  temperature: 0.2,
+  testCasePrompt: '',
+  locked: false
+});
+
 const COMPANION_PETS = Object.freeze({
   yuexinmiao: Object.freeze({
     id: 'yuexinmiao',
@@ -81,7 +97,379 @@ const COMPANION_PETS = Object.freeze({
     description: '从录屏里提取的月薪喵，会在桌面随机移动、跳舞，并提醒你喝水、站起来活动。',
     title: '月薪喵 - Test cat',
     frameBase: '../../assets/companion-pet/yuexinmiao/dance-',
-    frameCount: 17
+    frameCount: 17,
+    actions: Object.freeze({
+      idle: Object.freeze({
+        fps: 5,
+        variants: Object.freeze([
+          Object.freeze({ id: 'classic', frameBase: '../../assets/companion-pet/yuexinmiao/dance-', frameCount: 17, extension: 'png' }),
+          Object.freeze({ id: 'work', frameBase: '../../assets/companion-pet/yuexinmiao/recording-20260708/work/work-', frameCount: 5, extension: 'png' }),
+          Object.freeze({ id: 'shy', frameBase: '../../assets/companion-pet/yuexinmiao/recording-20260708/shy/shy-', frameCount: 2, extension: 'png' }),
+          Object.freeze({ id: 'headphones', frameBase: '../../assets/companion-pet/yuexinmiao/recording-20260708/headphones/headphones-', frameCount: 8, extension: 'png' })
+        ])
+      }),
+      walk: Object.freeze({
+        fps: 5,
+        variants: Object.freeze([
+          Object.freeze({ id: 'small-walk', frameBase: '../../assets/companion-pet/yuexinmiao/recording-20260708/walk/walk-', frameCount: 8, extension: 'png' }),
+          Object.freeze({ id: 'classic', frameBase: '../../assets/companion-pet/yuexinmiao/dance-', frameCount: 17, extension: 'png' })
+        ])
+      }),
+      touch: Object.freeze({
+        fps: 8,
+        variants: Object.freeze([
+          Object.freeze({ id: 'love', frameBase: '../../assets/companion-pet/yuexinmiao/recording-20260708/love/love-', frameCount: 8, extension: 'png' }),
+          Object.freeze({ id: 'loveburst', frameBase: '../../assets/companion-pet/yuexinmiao/recording-20260708/loveburst/loveburst-', frameCount: 9, extension: 'png' }),
+          Object.freeze({ id: 'shy', frameBase: '../../assets/companion-pet/yuexinmiao/recording-20260708/shy/shy-', frameCount: 2, extension: 'png' }),
+          Object.freeze({ id: 'wave', frameBase: '../../assets/companion-pet/yuexinmiao/recording-20260708/wave/wave-', frameCount: 3, extension: 'png' }),
+          Object.freeze({ id: 'classic', frameBase: '../../assets/companion-pet/yuexinmiao/dance-', frameCount: 17, extension: 'png' })
+        ])
+      }),
+      drag: Object.freeze({
+        fps: 5,
+        variants: Object.freeze([
+          Object.freeze({ id: 'angry', frameBase: '../../assets/companion-pet/yuexinmiao/recording-20260708/angry/angry-', frameCount: 4, extension: 'png' }),
+          Object.freeze({ id: 'cool', frameBase: '../../assets/companion-pet/yuexinmiao/recording-20260708/cool/cool-', frameCount: 3, extension: 'png' }),
+          Object.freeze({ id: 'classic', frameBase: '../../assets/companion-pet/yuexinmiao/dance-', frameCount: 17, extension: 'png' })
+        ])
+      }),
+      dance: Object.freeze({
+        fps: 12,
+        variants: Object.freeze([
+          Object.freeze({ id: 'classic', frameBase: '../../assets/companion-pet/yuexinmiao/dance-', frameCount: 17, extension: 'png' }),
+          Object.freeze({ id: 'boss', frameBase: '../../assets/companion-pet/yuexinmiao/recording-20260708/boss/boss-', frameCount: 5, extension: 'png' }),
+          Object.freeze({ id: 'stand', frameBase: '../../assets/companion-pet/yuexinmiao/recording-20260708/stand/stand-', frameCount: 3, extension: 'png' }),
+          Object.freeze({ id: 'wave', frameBase: '../../assets/companion-pet/yuexinmiao/recording-20260708/wave/wave-', frameCount: 3, extension: 'png' }),
+          Object.freeze({ id: 'cool', frameBase: '../../assets/companion-pet/yuexinmiao/recording-20260708/cool/cool-', frameCount: 3, extension: 'png' })
+        ])
+      }),
+      reminder: Object.freeze({
+        fps: 8,
+        variants: Object.freeze([
+          Object.freeze({ id: 'work', frameBase: '../../assets/companion-pet/yuexinmiao/recording-20260708/work/work-', frameCount: 5, extension: 'png' }),
+          Object.freeze({ id: 'headphones', frameBase: '../../assets/companion-pet/yuexinmiao/recording-20260708/headphones/headphones-', frameCount: 8, extension: 'png' }),
+          Object.freeze({ id: 'stand', frameBase: '../../assets/companion-pet/yuexinmiao/recording-20260708/stand/stand-', frameCount: 3, extension: 'png' })
+        ])
+      }),
+      reminderWater: Object.freeze({
+        fps: 7,
+        variants: Object.freeze([
+          Object.freeze({ id: 'wave', frameBase: '../../assets/companion-pet/yuexinmiao/recording-20260708/wave/wave-', frameCount: 3, extension: 'png' }),
+          Object.freeze({ id: 'love', frameBase: '../../assets/companion-pet/yuexinmiao/recording-20260708/love/love-', frameCount: 8, extension: 'png' })
+        ])
+      }),
+      reminderStand: Object.freeze({
+        fps: 6,
+        variants: Object.freeze([
+          Object.freeze({ id: 'stand', frameBase: '../../assets/companion-pet/yuexinmiao/recording-20260708/stand/stand-', frameCount: 3, extension: 'png' }),
+          Object.freeze({ id: 'small-walk', frameBase: '../../assets/companion-pet/yuexinmiao/recording-20260708/walk/walk-', frameCount: 8, extension: 'png' })
+        ])
+      })
+    }),
+    lines: Object.freeze({
+      idle: Object.freeze([
+        '月薪喵今日工位：你的桌面左下角。',
+        '老板画饼，我跳舞。',
+        '正在假装上班，其实在守护你。',
+        '你敲键盘，我负责扭扭。',
+        '今天也要一起摸鱼，一起努力。',
+        '月薪喵已经把烦恼踢到桌子底下了。',
+        '我没有偷懒，我是在进行桌面压力测试。',
+        '键盘声很安心，像下小鱼干雨。',
+        '今天的能量条还没空，先别急着投降。',
+        '我在旁边站岗，坏心情禁止入内。',
+        '如果你卡住了，先摸一下猫再继续。',
+        '月薪喵巡逻中：水杯、肩膀、心情，都要检查。',
+        '工位天气：适合慢慢做，适合偷偷笑。',
+        '我刚刚把焦虑咬了一口，味道一般。',
+        '你认真起来的时候，桌面都会变亮一点。',
+        '不要和 bug 生气，bug 没有猫可爱。',
+        '月薪喵低电量模式：趴着也要陪你。',
+        '今天可以只前进一点点，也算数。',
+        '如果没人夸你，我先夸：你真的撑得很好。',
+        '我在等你忙完，然后奖励你一个喵喵点头。',
+        '别怕，我是桌面小保安。',
+        '月薪喵观察报告：这个人类需要一点温柔。',
+        '我把自己放在这里，防止你忘记休息。',
+        '工作可以慢，饭要好好吃。',
+        '老板不在的时候，我就是老板。',
+        '正在监听摸摸信号，随时待命。',
+        '今天的坏运气已经被我踩扁了。',
+        '我陪你熬，但我更想陪你早点收工。',
+        '你做你的事，我负责把桌面变可爱。'
+      ]),
+      touch: Object.freeze([
+        '摸摸收到，月薪自动加一袋小鱼干。',
+        '我真的特别爱你，为什么你会流泪',
+        '别难过，月薪喵给你跳一段。',
+        '你一摸我，我就觉得今天还能再撑撑。',
+        '报告老板：这个人类今天也很可爱。',
+        '摸鱼可以，别忘了喝水，不然月薪喵会担心。',
+        '加班退退退，快乐进进进。',
+        '你负责发光，我负责在旁边喵喵鼓掌。',
+        '今天的 KPI：让你笑一下。完成了吗？',
+        '如果世界太吵，先看月薪喵扭两秒。',
+        '摸摸可以续命，已为你续上三分钟勇气。',
+        '你刚才摸到的是月薪喵的隐藏温柔开关。',
+        '喵喵确认：你今天也值得被喜欢。',
+        '别皱眉啦，月薪喵会以可爱之名制裁烦恼。',
+        '收到摸摸，正在发放精神小鱼干。',
+        '你摸我一下，我替你骂一下需求。',
+        '好啦好啦，今天辛苦的人类，抱抱。',
+        '我不懂绩效，但我懂你已经很努力了。',
+        '压力过大时请反复点击本猫。',
+        '猫猫电台提示：你不是机器，你可以休息。',
+        '我把小爪子放在这里，给你盖一个安心章。',
+        '不开心也没关系，不用马上变好。',
+        '月薪喵批准你短暂摆烂三十秒。',
+        '你是很珍贵的人类，不是待办事项集合。',
+        '如果今天没人站你这边，猫站。',
+        '摸摸触发彩蛋：你会越来越顺。',
+        '我听见你的心里有点累，所以我来了。',
+        '把难过给我，我拿去换小鱼干。',
+        '你负责活着，我负责可爱地陪着。',
+        '别把自己逼太紧，猫猫看了会心疼。',
+        '现在开始，坏情绪由月薪喵临时托管。',
+        '你已经做得很好啦，真的。',
+        '如果你想哭，月薪喵就在这里。',
+        '你一摸我，我就想把世界调低音量。',
+        '今日份摸摸已入账，利息是好运。',
+        '别怕慢，慢慢来也会到。',
+        '我在，我在，我真的在。',
+        '你不是一个人在和生活对线。',
+        '月薪喵给你一个不需要解释的抱抱。',
+        '好了，摸完猫，我们再轻轻往前走一点。'
+      ]),
+      dance: Object.freeze([
+        '月薪喵开始扭扭舞。',
+        '左扭右扭，烦恼没有。',
+        '工资没涨，舞步先涨。',
+        '今日舞蹈 BGM：喵喵喵喵喵。',
+        '跳一段，给你的努力配个特效。',
+        '月薪喵宣布：现在进入快乐加载动画。',
+        '别问为什么跳舞，问就是精神股价上涨。',
+        '扭两下，今天的晦气就被甩出屏幕。',
+        '猫猫热身结束，准备攻击坏心情。',
+        '工作暂停，快乐插播。',
+        '月薪喵的舞步没有章法，但有真心。',
+        '这是给你的胜利小舞，哪怕只是小胜利。',
+        '屏幕太严肃了，我来负责荒谬可爱。',
+        '扭一扭，肩膀也跟着松一松。',
+        '今日舞蹈主题：活着就很了不起。',
+        '我跳得越认真，烦恼越站不稳。',
+        '这段舞献给还没放弃的你。',
+        '老板不涨薪，猫猫涨气氛。',
+        '喵喵舞法：把焦虑摇成碎屑。',
+        '如果你笑了，那我就赢了。'
+      ]),
+      drag: Object.freeze([
+        '被拎起来了，爪爪离地中。',
+        '老板轻点，我只是个小猫员工。',
+        '空中办公申请通过。',
+        '这是什么新型团建，猫猫疑惑。',
+        '我飞起来了，但工资没有。',
+        '轻拿轻放，月薪喵易碎但嘴硬。',
+        '别晃啦，我的小鱼干要掉了。',
+        '拎猫可以，但要负责哄。',
+        '人类，你的拖拽手法很像需求变更。',
+        '爪爪离地，尊严暂存。',
+        '如果这是升职，请把我放在更舒服的位置。',
+        '我被移动了，但我的灵魂还在摸鱼。',
+        '拖我可以，别拖项目进度。',
+        '正在空中巡查你的桌面。',
+        '放下我，我还能继续陪你上班。',
+        '已进入猫猫悬浮模式。',
+        '月薪喵被拎起来，表情管理失败。',
+        '轻点嘛，我会自己走的。',
+        '这段路没有报销吗？'
+      ]),
+      online: Object.freeze([
+        '月薪喵上线，今天也一起努力。',
+        '工位守护猫到岗。',
+        '月薪喵开机：先给你一个好运。',
+        '今天也请多指教，人类同事。',
+        '我来了，把桌面交给我。',
+        '月薪喵上线，坏心情下线。',
+        '喵喵打卡成功，陪伴模式启动。',
+        '今天我们慢慢来，不急。'
+      ])
+    }),
+    reminders: Object.freeze({
+      water: Object.freeze({
+        title: '喝水时间到',
+        message: '月薪喵扭了两下：喝口水吧，身体也要补蓝量。',
+        messages: Object.freeze([
+          '月薪喵扭了两下：喝口水吧，身体也要补蓝量。',
+          '水杯在等你，不要让它变成摆设。',
+          '喝水时间到，猫猫监督，不许赖账。',
+          '先喝一口水，再和 bug 决斗。',
+          '你的身体发来消息：需要一点水。',
+          '月薪喵把水杯推到你面前：续命啦。',
+          '喝水不是摸鱼，是系统维护。',
+          '不喝水会变成干巴巴打工人，猫猫不允许。'
+        ])
+      }),
+      stand: Object.freeze({
+        title: '站起来伸展一下',
+        message: '月薪喵开始扭扭：站起来走两步，肩膀和尾巴都松一松。',
+        messages: Object.freeze([
+          '月薪喵开始扭扭：站起来走两步，肩膀和尾巴都松一松。',
+          '起来活动一下，椅子不能一直封印你。',
+          '肩膀该解冻了，人类。',
+          '站起来伸个懒腰，猫猫给你计时。',
+          '先离开椅子十秒，回来再继续战斗。',
+          '月薪喵巡查：你的脖子需要重启。',
+          '久坐警报响了，起来走走吧。',
+          '身体也是项目成员，要维护。'
+        ])
+      })
+    })
+  }),
+  doro: Object.freeze({
+    id: 'doro',
+    name: 'Doro',
+    description: '来自你这次绿幕素材的 Doro，已去掉绿幕并拆成多组动作，会待机、爬、被摸摸、被拎起来和提醒休息。',
+    title: 'Doro - Test cat',
+    frameBase: '../../assets/companion-pet/doro/recording-20260708113617/stand/stand-',
+    frameCount: 8,
+    actions: Object.freeze({
+      idle: Object.freeze({
+        fps: 5,
+        variants: Object.freeze([
+          Object.freeze({ id: 'stand', frameBase: '../../assets/companion-pet/doro/recording-20260708113617/stand/stand-', frameCount: 8, extension: 'png' }),
+          Object.freeze({ id: 'pillow', frameBase: '../../assets/companion-pet/doro/recording-20260708113617/pillow/pillow-', frameCount: 8, extension: 'png' }),
+          Object.freeze({ id: 'close', frameBase: '../../assets/companion-pet/doro/recording-20260708113617/close/close-', frameCount: 8, extension: 'png' }),
+          Object.freeze({ id: 'tired', frameBase: '../../assets/companion-pet/doro/recording-20260708113617/tired/tired-', frameCount: 8, extension: 'png' })
+        ])
+      }),
+      walk: Object.freeze({
+        fps: 6,
+        variants: Object.freeze([
+          Object.freeze({ id: 'tiny-walk', frameBase: '../../assets/companion-pet/doro/recording-20260708113617/tiny-walk/tiny-walk-', frameCount: 8, extension: 'png' }),
+          Object.freeze({ id: 'crawl', frameBase: '../../assets/companion-pet/doro/recording-20260708113617/crawl/crawl-', frameCount: 8, extension: 'png' }),
+          Object.freeze({ id: 'ghost-run', frameBase: '../../assets/companion-pet/doro/recording-20260708113617/ghost-run/ghost-run-', frameCount: 8, extension: 'png' }),
+          Object.freeze({ id: 'rocket', frameBase: '../../assets/companion-pet/doro/recording-20260708113617/rocket/rocket-', frameCount: 8, extension: 'png' })
+        ])
+      }),
+      touch: Object.freeze({
+        fps: 7,
+        variants: Object.freeze([
+          Object.freeze({ id: 'pinch', frameBase: '../../assets/companion-pet/doro/recording-20260708113617/pinch/pinch-', frameCount: 8, extension: 'png' }),
+          Object.freeze({ id: 'peek', frameBase: '../../assets/companion-pet/doro/recording-20260708113617/peek/peek-', frameCount: 8, extension: 'png' }),
+          Object.freeze({ id: 'close', frameBase: '../../assets/companion-pet/doro/recording-20260708113617/close/close-', frameCount: 8, extension: 'png' }),
+          Object.freeze({ id: 'pillow', frameBase: '../../assets/companion-pet/doro/recording-20260708113617/pillow/pillow-', frameCount: 8, extension: 'png' })
+        ])
+      }),
+      drag: Object.freeze({
+        fps: 7,
+        variants: Object.freeze([
+          Object.freeze({ id: 'lifted', frameBase: '../../assets/companion-pet/doro/recording-20260708113617/lifted/lifted-', frameCount: 8, extension: 'png' }),
+          Object.freeze({ id: 'pinch', frameBase: '../../assets/companion-pet/doro/recording-20260708113617/pinch/pinch-', frameCount: 8, extension: 'png' }),
+          Object.freeze({ id: 'rocket', frameBase: '../../assets/companion-pet/doro/recording-20260708113617/rocket/rocket-', frameCount: 8, extension: 'png' })
+        ])
+      }),
+      dance: Object.freeze({
+        fps: 8,
+        variants: Object.freeze([
+          Object.freeze({ id: 'spin', frameBase: '../../assets/companion-pet/doro/recording-20260708113617/spin/spin-', frameCount: 8, extension: 'png' }),
+          Object.freeze({ id: 'rocket', frameBase: '../../assets/companion-pet/doro/recording-20260708113617/rocket/rocket-', frameCount: 8, extension: 'png' }),
+          Object.freeze({ id: 'ghost-run', frameBase: '../../assets/companion-pet/doro/recording-20260708113617/ghost-run/ghost-run-', frameCount: 8, extension: 'png' }),
+          Object.freeze({ id: 'tiny-walk', frameBase: '../../assets/companion-pet/doro/recording-20260708113617/tiny-walk/tiny-walk-', frameCount: 8, extension: 'png' })
+        ])
+      }),
+      reminder: Object.freeze({
+        fps: 6,
+        variants: Object.freeze([
+          Object.freeze({ id: 'work', frameBase: '../../assets/companion-pet/doro/recording-20260708113617/work/work-', frameCount: 8, extension: 'png' }),
+          Object.freeze({ id: 'box', frameBase: '../../assets/companion-pet/doro/recording-20260708113617/box/box-', frameCount: 8, extension: 'png' }),
+          Object.freeze({ id: 'tired', frameBase: '../../assets/companion-pet/doro/recording-20260708113617/tired/tired-', frameCount: 8, extension: 'png' }),
+          Object.freeze({ id: 'sleep', frameBase: '../../assets/companion-pet/doro/recording-20260708113617/sleep/sleep-', frameCount: 10, extension: 'png' })
+        ])
+      }),
+      reminderWater: Object.freeze({
+        fps: 6,
+        variants: Object.freeze([
+          Object.freeze({ id: 'work', frameBase: '../../assets/companion-pet/doro/recording-20260708113617/work/work-', frameCount: 8, extension: 'png' }),
+          Object.freeze({ id: 'box', frameBase: '../../assets/companion-pet/doro/recording-20260708113617/box/box-', frameCount: 8, extension: 'png' }),
+          Object.freeze({ id: 'sleep', frameBase: '../../assets/companion-pet/doro/recording-20260708113617/sleep/sleep-', frameCount: 10, extension: 'png' })
+        ])
+      }),
+      reminderStand: Object.freeze({
+        fps: 6,
+        variants: Object.freeze([
+          Object.freeze({ id: 'tiny-walk', frameBase: '../../assets/companion-pet/doro/recording-20260708113617/tiny-walk/tiny-walk-', frameCount: 8, extension: 'png' }),
+          Object.freeze({ id: 'crawl', frameBase: '../../assets/companion-pet/doro/recording-20260708113617/crawl/crawl-', frameCount: 8, extension: 'png' }),
+          Object.freeze({ id: 'spin', frameBase: '../../assets/companion-pet/doro/recording-20260708113617/spin/spin-', frameCount: 8, extension: 'png' }),
+          Object.freeze({ id: 'box', frameBase: '../../assets/companion-pet/doro/recording-20260708113617/box/box-', frameCount: 8, extension: 'png' })
+        ])
+      })
+    }),
+    lines: Object.freeze({
+      idle: Object.freeze([
+        'Doro 正在桌面上安静待机。',
+        'Doro 看起来很乖，其实脑袋里在开派对。',
+        '你忙你的，Doro 负责把屏幕变软一点。',
+        'Doro 今天也在认真陪班。',
+        '如果你卡住了，先看 Doro 发呆两秒。',
+        'Doro 没有催你，Doro 只是路过可爱一下。',
+        '桌面风平浪静，Doro 小小营业。',
+        'Doro 把坏心情藏到角落里了。'
+      ]),
+      touch: Object.freeze([
+        '摸摸收到，Doro 进入开心模式。',
+        '我真的特别爱你，为什么你会流泪',
+        '再摸一下，Doro 就要得意了。',
+        'Doro 被捏住了，但是 Doro 很坚强。',
+        '你摸到的是今日份小小安慰。',
+        'Doro 贴过来一点，坏情绪退后。',
+        '不要皱眉啦，Doro 会替你凶一下烦恼。',
+        '摸摸可以，压力不可以。'
+      ]),
+      dance: Object.freeze([
+        'Doro 开始乱晃，快乐也跟着乱晃。',
+        '转一圈，晦气散开。',
+        'Doro 的舞步没有逻辑，但很有诚意。',
+        '今天的小胜利，值得 Doro 扭一下。',
+        '快乐加载中，Doro 正在努力渲染。',
+        '如果你笑了，Doro 就算赢。'
+      ]),
+      drag: Object.freeze([
+        'Doro 被拎起来了，表情管理失败。',
+        '轻一点，Doro 正在空中营业。',
+        '这是搬运服务吗？记得给摸摸好评。',
+        'Doro 悬浮中，请稍后。',
+        '放下以后要补偿一颗糖。',
+        'Doro 被移动到新的风水位。'
+      ]),
+      online: Object.freeze([
+        'Doro 回来了，这次用的是新素材。',
+        'Doro 上线，桌面陪伴开始。',
+        '今天由 Doro 和月薪喵轮流值班。',
+        'Doro 已经准备好在桌面发呆了。'
+      ])
+    }),
+    reminders: Object.freeze({
+      water: Object.freeze({
+        title: '喝水时间到',
+        message: 'Doro 敲敲桌子：喝点水吧，身体也要续航。',
+        messages: Object.freeze([
+          'Doro 敲敲桌子：喝点水吧，身体也要续航。',
+          '水杯不是摆设，Doro 正在认真监督。',
+          '喝一口水，再继续和任务对线。',
+          'Doro 小声提醒：别把自己熬干啦。'
+        ])
+      }),
+      stand: Object.freeze({
+        title: '站起来伸展一下',
+        message: 'Doro 开始小跑：站起来活动一下，别被椅子封印。',
+        messages: Object.freeze([
+          'Doro 开始小跑：站起来活动一下，别被椅子封印。',
+          '起来走两步，Doro 给你打气。',
+          '肩膀该解冻了，Doro 已经看见了。',
+          '先伸个懒腰，再回来继续。'
+        ])
+      })
+    })
   })
 });
 
@@ -93,10 +481,65 @@ function companionPetSettingsPath() {
   return path.join(app.getPath('userData'), 'companion-pet-settings.json');
 }
 
+function aiSettingsPath() {
+  return path.join(app.getPath('userData'), 'ai-settings.json');
+}
+
 function clampNumber(value, fallback, min, max) {
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
   return Math.min(max, Math.max(min, Math.round(number)));
+}
+
+function clampFloat(value, fallback, min, max) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return fallback;
+  return Math.min(max, Math.max(min, number));
+}
+
+function normalizeAiSettings(value = {}) {
+  return {
+    enabled: value.enabled !== false,
+    baseUrl: String(value.baseUrl || '').trim().replace(/\/+$/, ''),
+    model: String(value.model || '').trim(),
+    apiKey: String(value.apiKey || '').trim(),
+    temperature: clampFloat(value.temperature, DEFAULT_AI_SETTINGS.temperature, 0, 2),
+    testCasePrompt: String(value.testCasePrompt || ''),
+    locked: value.locked === true
+  };
+}
+
+function loadAiSettings() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(aiSettingsPath(), 'utf8'));
+    return normalizeAiSettings({ ...DEFAULT_AI_SETTINGS, ...parsed });
+  } catch {
+    return { ...DEFAULT_AI_SETTINGS };
+  }
+}
+
+async function saveAiSettingsToDisk() {
+  await fsp.mkdir(path.dirname(aiSettingsPath()), { recursive: true });
+  await fsp.writeFile(aiSettingsPath(), JSON.stringify(aiSettings, null, 2));
+}
+
+function aiSettingsSnapshot() {
+  const settings = normalizeAiSettings(aiSettings || DEFAULT_AI_SETTINGS);
+  return {
+    settings,
+    ready: Boolean(settings.enabled && settings.baseUrl && settings.model && settings.apiKey),
+    missing: [
+      settings.enabled ? '' : 'AI 功能已关闭',
+      settings.baseUrl ? '' : 'Base URL',
+      settings.model ? '' : 'Model',
+      settings.apiKey ? '' : 'API Key'
+    ].filter(Boolean)
+  };
+}
+
+function pickCompanionPetText(lines, fallback = '') {
+  if (!Array.isArray(lines) || !lines.length) return fallback;
+  return lines[Math.floor(Math.random() * lines.length)] || fallback;
 }
 
 function normalizeCompanionPetSettings(value = {}) {
@@ -266,6 +709,14 @@ function captureSettingsSnapshot() {
   };
 }
 
+function isCaptureFeatureEnabled() {
+  return (captureSettings || DEFAULT_CAPTURE_SETTINGS).enabled !== false;
+}
+
+function ensureCaptureFeatureEnabled() {
+  if (!isCaptureFeatureEnabled()) throw new Error('截图与录屏已关闭，请先到设置中开启');
+}
+
 function capturePayloadId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -323,19 +774,42 @@ async function saveImageDataUrl(dataUrl, ownerWindow = mainWindow) {
   return { canceled: false, filePath };
 }
 
-async function saveVideoBuffer(data, ownerWindow = recorderWindow || mainWindow) {
+function normalizeVideoSaveOptions(options = {}) {
+  const mimeType = String(options.mimeType || '').toLowerCase();
+  const extension = String(options.extension || '').toLowerCase().replace(/^\./, '');
+  const inferred = extension || (mimeType.includes('mp4') ? 'mp4' : 'webm');
+  const normalizedExtension = inferred === 'mp4' ? 'mp4' : 'webm';
+  return {
+    extension: normalizedExtension,
+    mimeType: normalizedExtension === 'mp4' ? 'video/mp4' : 'video/webm',
+    label: normalizedExtension === 'mp4' ? 'MP4 视频' : 'WebM 视频'
+  };
+}
+
+function withVideoExtension(filePath, extension) {
+  const current = path.extname(filePath).toLowerCase();
+  if (['.mp4', '.webm'].includes(current)) return filePath;
+  return `${filePath}.${extension}`;
+}
+
+async function saveVideoBuffer(data, options = {}, ownerWindow = recorderWindow || mainWindow) {
   const bytes = data instanceof ArrayBuffer ? Buffer.from(new Uint8Array(data)) : Buffer.from(data || []);
   if (!bytes.length) throw new Error('录屏数据为空，无法保存');
-  const defaultPath = path.join(getKnownPath('videos', 'downloads'), `TestCat_录屏_${timestampForFile()}.webm`);
+  const format = normalizeVideoSaveOptions(options);
+  const defaultPath = path.join(getKnownPath('videos', 'downloads'), `TestCat_录屏_${timestampForFile()}.${format.extension}`);
+  const primaryFilter = { name: format.label, extensions: [format.extension] };
+  const secondaryFilter = format.extension === 'mp4'
+    ? { name: 'WebM 视频', extensions: ['webm'] }
+    : { name: 'MP4 视频', extensions: ['mp4'] };
   const result = await dialog.showSaveDialog(ownerWindow || undefined, {
     title: '保存录屏',
     defaultPath,
-    filters: [{ name: 'WebM 视频', extensions: ['webm'] }]
+    filters: [primaryFilter, secondaryFilter, { name: '所有文件', extensions: ['*'] }]
   });
   if (result.canceled || !result.filePath) return { canceled: true };
-  const filePath = result.filePath.toLowerCase().endsWith('.webm') ? result.filePath : `${result.filePath}.webm`;
+  const filePath = withVideoExtension(result.filePath, format.extension);
   await fsp.writeFile(filePath, bytes);
-  return { canceled: false, filePath };
+  return { canceled: false, filePath, format: format.extension, mimeType: format.mimeType };
 }
 
 function createPinWindow(dataUrl) {
@@ -609,6 +1083,7 @@ function matchDisplaySource(display, sources, index, displayCount) {
 }
 
 async function createCaptureSelection(mode = 'screenshot') {
+  ensureCaptureFeatureEnabled();
   closeSelectionWindows();
   const displays = screen.getAllDisplays();
   const maxWidth = Math.max(...displays.map((display) => Math.round(display.bounds.width * display.scaleFactor)), 1280);
@@ -678,10 +1153,12 @@ async function createCaptureSelection(mode = 'screenshot') {
 }
 
 async function createScreenshotSelection() {
+  ensureCaptureFeatureEnabled();
   return createCaptureSelection('screenshot');
 }
 
 async function createRecordingSelection() {
+  ensureCaptureFeatureEnabled();
   if (recorderWindow && !recorderWindow.isDestroyed()) {
     if (recorderWindow.isMinimized()) recorderWindow.restore();
     recorderWindow.show();
@@ -855,7 +1332,7 @@ function sendCompanionPetReminder(type) {
   if (!companionPetSettings?.enabled) return;
   const activePet = COMPANION_PETS[companionPetSettings.activePetId] || COMPANION_PETS[DEFAULT_COMPANION_PET_SETTINGS.activePetId];
   const petName = activePet.name;
-  const reminderCopy = {
+  const fallbackReminders = {
     water: {
       type: 'water',
       title: '喝水时间到',
@@ -867,7 +1344,12 @@ function sendCompanionPetReminder(type) {
       message: petName + '开始扭扭：站起来走两步，肩膀和尾巴都松一松。'
     }
   };
-  const reminder = reminderCopy[type];
+  const reminder = {
+    type,
+    ...(fallbackReminders[type] || {}),
+    ...((activePet.reminders && activePet.reminders[type]) || {})
+  };
+  reminder.message = pickCompanionPetText(reminder.messages, reminder.message);
   if (!reminder) return;
   const targetWindow = companionPetWindow && !companionPetWindow.isDestroyed() ? companionPetWindow : createCompanionPetWindow();
   showCompanionPetWindow(targetWindow);
@@ -898,7 +1380,9 @@ function applyCompanionPetSettings() {
     sendCompanionPetSettings();
     return;
   }
-  createCompanionPetWindow();
+  const targetWindow = createCompanionPetWindow();
+  const activePet = COMPANION_PETS[companionPetSettings.activePetId] || COMPANION_PETS[DEFAULT_COMPANION_PET_SETTINGS.activePetId];
+  if (targetWindow && !targetWindow.isDestroyed()) targetWindow.setTitle(activePet.title);
   scheduleCompanionPetMovement();
   scheduleCompanionPetReminders();
   sendCompanionPetSettings();
@@ -1031,6 +1515,76 @@ function setupIpc() {
     clipboard.writeText(String(value || '').slice(0, 2_000_000));
     return true;
   });
+  ipcMain.handle('timestamp-converter:open-window', () => {
+    createTimestampConverterWindow();
+    return true;
+  });
+  ipcMain.handle('timestamp-converter:copy-text', (_event, value) => {
+    clipboard.writeText(String(value || '').slice(0, 200_000));
+    return true;
+  });
+  ipcMain.handle('formula-calculator:open-window', () => {
+    createFormulaCalculatorWindow();
+    return true;
+  });
+  ipcMain.handle('formula-calculator:copy-text', (_event, value) => {
+    clipboard.writeText(String(value || '').slice(0, 200_000));
+    return true;
+  });
+  ipcMain.handle('ai-test-assistant:open-window', () => {
+    createAiTestAssistantWindow();
+    return true;
+  });
+  ipcMain.handle('ai-test-assistant:get-settings', () => aiSettingsSnapshot());
+  ipcMain.handle('ai-test-assistant:save-settings', async (_event, settings = {}) => {
+    const current = normalizeAiSettings(aiSettings || DEFAULT_AI_SETTINGS);
+    if (current.locked && settings.locked !== false) return aiSettingsSnapshot();
+    if (current.locked && settings.locked === false) aiSettings = normalizeAiSettings({ ...current, locked: false });
+    else aiSettings = normalizeAiSettings({ ...current, ...settings });
+    await saveAiSettingsToDisk();
+    return aiSettingsSnapshot();
+  });
+  ipcMain.handle('ai-test-assistant:test-connection', () => aiTestAssistantService.testConnection());
+  ipcMain.handle('ai-test-assistant:select-requirement-file', () => aiTestAssistantService.selectRequirementFile());
+  ipcMain.handle('ai-test-assistant:extract-requirement-file', (_event, filePath) => aiTestAssistantService.extractRequirementFile(filePath));
+  ipcMain.handle('ai-test-assistant:generate-test-cases', (_event, payload = {}) => aiTestAssistantService.generateTestCases(payload));
+  ipcMain.handle('ai-test-assistant:export-excel', (_event, payload = {}) => aiTestAssistantService.exportExcel(payload));
+  ipcMain.handle('ai-test-assistant:export-xmind', (_event, payload = {}) => aiTestAssistantService.exportXmind(payload));
+  ipcMain.handle('ai-test-assistant:copy-text', (_event, value) => {
+    clipboard.writeText(String(value || '').slice(0, 2_000_000));
+    return true;
+  });
+  ipcMain.handle('formula-calculator:export-data', async (event, payload = {}) => {
+    const senderWindow = BrowserWindow.fromWebContents(event.sender);
+    const defaultPath = String(payload.fileName || `test-cat-formulas-${Date.now()}.json`).replace(/[\\/:*?"<>|]/g, '-');
+    const result = await dialog.showSaveDialog(senderWindow || mainWindow, {
+      title: '导出公式和变量词',
+      defaultPath,
+      filters: [
+        { name: 'JSON 文件', extensions: ['json'] },
+        { name: '所有文件', extensions: ['*'] }
+      ]
+    });
+    if (result.canceled || !result.filePath) return null;
+    const content = typeof payload.content === 'string' ? payload.content : JSON.stringify(payload.data || {}, null, 2);
+    await fsp.writeFile(result.filePath, content, 'utf8');
+    return { filePath: result.filePath };
+  });
+  ipcMain.handle('formula-calculator:import-data', async (event) => {
+    const senderWindow = BrowserWindow.fromWebContents(event.sender);
+    const result = await dialog.showOpenDialog(senderWindow || mainWindow, {
+      title: '导入公式和变量词',
+      properties: ['openFile'],
+      filters: [
+        { name: 'JSON 文件', extensions: ['json'] },
+        { name: '所有文件', extensions: ['*'] }
+      ]
+    });
+    if (result.canceled || !result.filePaths?.[0]) return null;
+    const filePath = result.filePaths[0];
+    const content = await fsp.readFile(filePath, 'utf8');
+    return { filePath, content };
+  });
   ipcMain.handle('mock-data:export-csv', async (event, payload = {}) => {
     const senderWindow = BrowserWindow.fromWebContents(event.sender);
     const defaultPath = String(payload.fileName || `mock-data-${Date.now()}.csv`).replace(/[\\/:*?"<>|]/g, '-');
@@ -1078,13 +1632,20 @@ function setupIpc() {
     captureSettings = normalizeCaptureSettings({ ...captureSettings, ...(settings || {}) });
     await saveCaptureSettingsToDisk();
     const shortcutStatus = registerCaptureShortcuts();
+    if (!captureSettings.enabled) {
+      closeSelectionWindows();
+      if (capturePreviewWindow && !capturePreviewWindow.isDestroyed()) capturePreviewWindow.close();
+      closeRecordingBorderWindow();
+    }
     return { settings: captureSettings, shortcutStatus };
   });
   ipcMain.handle('capture:start-screenshot', async () => {
+    ensureCaptureFeatureEnabled();
     await createScreenshotSelection();
     return true;
   });
   ipcMain.handle('capture:open-recorder', async () => {
+    ensureCaptureFeatureEnabled();
     await createRecordingSelection();
     return true;
   });
@@ -1099,6 +1660,7 @@ function setupIpc() {
   });
   ipcMain.handle('capture:selection-complete', async (_event, payload) => {
     closeSelectionWindows();
+    ensureCaptureFeatureEnabled();
     if (payload?.action === 'record') {
       const region = payload.region || {};
       if (!region.sourceId || !region.sourceRect?.width || !region.sourceRect?.height) throw new Error('录屏区域无效，请重新框选');
@@ -1144,9 +1706,12 @@ function setupIpc() {
     createCaptureEditorWindow(dataUrl);
     return true;
   });
-  ipcMain.handle('capture:list-sources', () => listCaptureSources());
-  ipcMain.handle('capture:save-video', async (event, data) => {
-    return saveVideoBuffer(data, BrowserWindow.fromWebContents(event.sender) || recorderWindow || mainWindow);
+  ipcMain.handle('capture:list-sources', () => {
+    ensureCaptureFeatureEnabled();
+    return listCaptureSources();
+  });
+  ipcMain.handle('capture:save-video', async (event, data, options = {}) => {
+    return saveVideoBuffer(data, options, BrowserWindow.fromWebContents(event.sender) || recorderWindow || mainWindow);
   });
   ipcMain.handle('capture:show-recording-border', (_event, region) => {
     createRecordingBorderWindow(region || {});
@@ -1549,11 +2114,129 @@ function createMockDataWindow() {
   return window;
 }
 
+function createTimestampConverterWindow() {
+  if (timestampConverterWindow && !timestampConverterWindow.isDestroyed()) {
+    if (timestampConverterWindow.isMinimized()) timestampConverterWindow.restore();
+    timestampConverterWindow.show();
+    timestampConverterWindow.focus();
+    return timestampConverterWindow;
+  }
+
+  const window = new BrowserWindow({
+    width: 1080,
+    height: 740,
+    minWidth: 900,
+    minHeight: 620,
+    show: false,
+    title: '时间戳转换 - Test cat',
+    icon: path.join(__dirname, '../assets/modules/timestamp-converter.png'),
+    titleBarStyle: isMac ? 'hiddenInset' : 'default',
+    backgroundColor: '#0f151e',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true
+    }
+  });
+
+  timestampConverterWindow = window;
+  window.loadFile(path.join(__dirname, 'renderer/timestamp-converter.html'));
+  window.once('ready-to-show', () => {
+    window.show();
+    if (process.argv.includes('--devtools')) window.webContents.openDevTools({ mode: 'detach' });
+  });
+  configureWindow(window);
+  window.on('closed', () => {
+    if (timestampConverterWindow === window) timestampConverterWindow = null;
+  });
+  return window;
+}
+
+function createFormulaCalculatorWindow() {
+  if (formulaCalculatorWindow && !formulaCalculatorWindow.isDestroyed()) {
+    if (formulaCalculatorWindow.isMinimized()) formulaCalculatorWindow.restore();
+    formulaCalculatorWindow.show();
+    formulaCalculatorWindow.focus();
+    return formulaCalculatorWindow;
+  }
+
+  const window = new BrowserWindow({
+    width: 1240,
+    height: 820,
+    minWidth: 980,
+    minHeight: 680,
+    show: false,
+    title: '公式运算 - Test cat',
+    icon: path.join(__dirname, '../assets/modules/formula-calculator.png'),
+    titleBarStyle: isMac ? 'hiddenInset' : 'default',
+    backgroundColor: '#0f151e',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true
+    }
+  });
+
+  formulaCalculatorWindow = window;
+  window.loadFile(path.join(__dirname, 'renderer/formula-calculator.html'));
+  window.once('ready-to-show', () => {
+    window.show();
+    if (process.argv.includes('--devtools')) window.webContents.openDevTools({ mode: 'detach' });
+  });
+  configureWindow(window);
+  window.on('closed', () => {
+    if (formulaCalculatorWindow === window) formulaCalculatorWindow = null;
+  });
+  return window;
+}
+
+function createAiTestAssistantWindow() {
+  if (aiTestAssistantWindow && !aiTestAssistantWindow.isDestroyed()) {
+    if (aiTestAssistantWindow.isMinimized()) aiTestAssistantWindow.restore();
+    aiTestAssistantWindow.show();
+    aiTestAssistantWindow.focus();
+    return aiTestAssistantWindow;
+  }
+
+  const window = new BrowserWindow({
+    width: 1280,
+    height: 840,
+    minWidth: 980,
+    minHeight: 680,
+    show: false,
+    title: 'AI 测试助手 - Test cat',
+    icon: path.join(__dirname, '../assets/modules/ai-test-assistant.png'),
+    titleBarStyle: isMac ? 'hiddenInset' : 'default',
+    backgroundColor: '#0f151e',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true
+    }
+  });
+
+  aiTestAssistantWindow = window;
+  window.loadFile(path.join(__dirname, 'renderer/ai-test-assistant.html'));
+  window.once('ready-to-show', () => {
+    window.show();
+    if (process.argv.includes('--devtools')) window.webContents.openDevTools({ mode: 'detach' });
+  });
+  configureWindow(window);
+  window.on('closed', () => {
+    if (aiTestAssistantWindow === window) aiTestAssistantWindow = null;
+  });
+  return window;
+}
+
 app.whenReady().then(() => {
   app.setName('Test cat');
   createApplicationMenu();
   captureSettings = loadCaptureSettings();
   companionPetSettings = loadCompanionPetSettings();
+  aiSettings = loadAiSettings();
   mobileMirrorService = new MobileMirrorService({
     appPath: app.getAppPath(),
     onStatus: (status) => {
@@ -1597,6 +2280,11 @@ app.whenReady().then(() => {
     dialog,
     appPath: app.getAppPath(),
     getWindow: () => appPackageWindow && !appPackageWindow.isDestroyed() ? appPackageWindow : mainWindow
+  });
+  aiTestAssistantService = new AiTestAssistantService({
+    dialog,
+    getWindow: () => aiTestAssistantWindow && !aiTestAssistantWindow.isDestroyed() ? aiTestAssistantWindow : mainWindow,
+    getSettings: () => aiSettings || DEFAULT_AI_SETTINGS
   });
   setupIpc();
   registerCaptureShortcuts();

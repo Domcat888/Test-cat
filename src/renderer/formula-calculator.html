@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>公式运算 - Test cat</title>
+    <link rel="stylesheet" href="formula-calculator.css" />
+  </head>
+  <body>
+    <div class="formula-shell">
+      <header class="formula-titlebar">
+        <div class="formula-brand">
+          <img src="../../assets/modules/formula-calculator.png" alt="" />
+          <div><strong>公式运算</strong><span>Test cat · Formula Lab</span></div>
+        </div>
+        <div class="title-actions">
+          <button class="ghost" id="import-data" type="button">导入公式/词</button>
+          <button class="ghost" id="export-data" type="button">导出公式/词</button>
+          <div class="title-status done" id="title-status"><i></i><span>已准备好代入计算</span></div>
+        </div>
+      </header>
+
+      <main>
+        <section class="formula-layout">
+          <aside class="panel word-panel">
+            <div class="section-title">
+              <div><h2>变量词库</h2><p>先生成词，点击词可直接插入公式</p></div>
+            </div>
+            <form id="word-form" class="word-form">
+              <label class="field">
+                <span>词名</span>
+                <input id="word-name" maxlength="32" placeholder="例如：鱼 / 炮倍 / 加成" />
+              </label>
+              <label class="field">
+                <span>默认值</span>
+                <input id="word-default" placeholder="可空，例如：1 或 20%" />
+              </label>
+              <button class="primary" type="submit">生成词</button>
+            </form>
+            <div class="quick-words" id="word-list"></div>
+          </aside>
+
+          <section class="panel formula-panel">
+            <div class="section-title">
+              <div><h2>公式模板</h2><p>支持中文变量、括号、四则运算、百分号输入和常用函数</p></div>
+              <button class="ghost" id="new-formula" type="button">新公式</button>
+            </div>
+            <form id="formula-form" class="formula-form">
+              <label class="field">
+                <span>结果词 / 公式名称</span>
+                <input id="formula-name" maxlength="32" placeholder="例如：最终金币数" />
+              </label>
+              <label class="field">
+                <span>公式</span>
+                <textarea id="formula-expression" spellcheck="false" placeholder="例如：最终金币数 = (炮倍 * 加成) + 鱼"></textarea>
+              </label>
+              <div class="formula-hint">
+                可用函数：round、floor、ceil、min、max、abs、sqrt、pow；输入值支持 <code>20%</code>、<code>1,000</code>；也可以写成 <code>(炮倍 * 加成) + 鱼 = 最终金币数</code>
+              </div>
+              <div class="action-row">
+                <button class="primary" type="submit" id="save-formula">保存公式</button>
+                <button class="secondary" type="button" id="cancel-edit" hidden>取消编辑</button>
+              </div>
+            </form>
+            <div class="formula-list" id="formula-list"></div>
+          </section>
+
+          <section class="panel calculate-panel">
+            <div class="section-title">
+              <div><h2>代入计算</h2><p>选择公式后自动生成输入项</p></div>
+              <button class="ghost" id="copy-result" type="button" disabled>复制结果</button>
+            </div>
+            <div class="selected-formula" id="selected-formula"></div>
+            <form id="calculate-form" class="calculate-form"></form>
+            <div class="result-card" id="result-card">
+              <span>计算结果</span>
+              <strong>等待输入</strong>
+              <p>选中公式并填写变量后，结果会显示在这里。</p>
+            </div>
+          </section>
+        </section>
+
+        <section class="panel history-panel">
+          <div class="section-title">
+            <div><h2>计算历史</h2><p>保留最近 80 条，方便回看测试数据</p></div>
+            <div class="mini-actions">
+              <button class="ghost" id="copy-history" type="button" disabled>复制历史</button>
+              <button class="ghost danger" id="clear-history" type="button">清空历史</button>
+            </div>
+          </div>
+          <div class="history-list" id="history-list"></div>
+        </section>
+      </main>
+    </div>
+    <div class="toast" id="toast"></div>
+    <script src="formula-calculator-core.js"></script>
+    <script src="formula-calculator.js"></script>
+  </body>
+</html>

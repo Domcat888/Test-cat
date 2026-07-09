@@ -81,7 +81,7 @@ contextBridge.exposeInMainWorld('testCat', {
     pinImage: (dataUrl) => ipcRenderer.invoke('capture:pin-image', dataUrl),
     openEditor: (dataUrl) => ipcRenderer.invoke('capture:open-editor', dataUrl),
     listSources: () => ipcRenderer.invoke('capture:list-sources'),
-    saveVideo: (arrayBuffer) => ipcRenderer.invoke('capture:save-video', arrayBuffer),
+    saveVideo: (arrayBuffer, options) => ipcRenderer.invoke('capture:save-video', arrayBuffer, options),
     showRecordingBorder: (region) => ipcRenderer.invoke('capture:show-recording-border', region),
     hideRecordingBorder: () => ipcRenderer.invoke('capture:hide-recording-border'),
     showItem: (filePath) => ipcRenderer.invoke('capture:show-item', filePath),
@@ -106,6 +106,29 @@ contextBridge.exposeInMainWorld('testCat', {
     openWindow: () => ipcRenderer.invoke('mock-data:open-window'),
     copyText: (value) => ipcRenderer.invoke('mock-data:copy-text', value),
     exportCsv: (payload) => ipcRenderer.invoke('mock-data:export-csv', payload)
+  },
+  timestampConverter: {
+    openWindow: () => ipcRenderer.invoke('timestamp-converter:open-window'),
+    copyText: (value) => ipcRenderer.invoke('timestamp-converter:copy-text', value)
+  },
+  formulaCalculator: {
+    openWindow: () => ipcRenderer.invoke('formula-calculator:open-window'),
+    copyText: (value) => ipcRenderer.invoke('formula-calculator:copy-text', value),
+    exportData: (payload) => ipcRenderer.invoke('formula-calculator:export-data', payload),
+    importData: () => ipcRenderer.invoke('formula-calculator:import-data')
+  },
+  aiTestAssistant: {
+    openWindow: () => ipcRenderer.invoke('ai-test-assistant:open-window'),
+    getSettings: () => ipcRenderer.invoke('ai-test-assistant:get-settings'),
+    saveSettings: (settings) => ipcRenderer.invoke('ai-test-assistant:save-settings', settings),
+    testConnection: () => ipcRenderer.invoke('ai-test-assistant:test-connection'),
+    selectRequirementFile: () => ipcRenderer.invoke('ai-test-assistant:select-requirement-file'),
+    extractRequirementFile: (filePath) => ipcRenderer.invoke('ai-test-assistant:extract-requirement-file', filePath),
+    pathForFile: (file) => webUtils.getPathForFile(file),
+    generateTestCases: (payload) => ipcRenderer.invoke('ai-test-assistant:generate-test-cases', payload),
+    exportExcel: (payload) => ipcRenderer.invoke('ai-test-assistant:export-excel', payload),
+    exportXmind: (payload) => ipcRenderer.invoke('ai-test-assistant:export-xmind', payload),
+    copyText: (value) => ipcRenderer.invoke('ai-test-assistant:copy-text', value)
   },
   companionPet: {
     getSettings: () => ipcRenderer.invoke('companion-pet:get-settings'),

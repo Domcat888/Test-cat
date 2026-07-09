@@ -23,8 +23,14 @@ let chunks = [];
 let startedAt = 0;
 let timer = null;
 let lastFilePath = '';
-let drawFrameId = 0;
+let drawTimer = null;
 let crop = null;
+let recordingFormat = { mimeType: 'video/webm', extension: 'webm', label: 'WebM' };
+let stopping = false;
+let streamEndedUnexpectedly = false;
+
+const RECORDING_FPS = 30;
+const MIN_RECORDING_MS = 1200;
 
 function toast(message) {
   const node = document.getElementById('toast');
@@ -58,14 +64,32 @@ function formatDuration(ms) {
   return minutes + ':' + seconds;
 }
 
-function recorderOptions() {
+function recorderFormats() {
   const candidates = [
+    { mimeType: 'video/mp4; codecs="avc1.42E01E"', extension: 'mp4', label: 'MP4' },
+    { mimeType: 'video/mp4; codecs=avc1.42E01E', extension: 'mp4', label: 'MP4' },
+    { mimeType: 'video/mp4; codecs=h264', extension: 'mp4', label: 'MP4' },
+    { mimeType: 'video/mp4', extension: 'mp4', label: 'MP4' },
     'video/webm; codecs=vp9',
     'video/webm; codecs=vp8',
     'video/webm'
-  ];
-  const mimeType = candidates.find((item) => MediaRecorder.isTypeSupported(item));
-  return mimeType ? { mimeType } : undefined;
+  ].map((item) => typeof item === 'string' ? { mimeType: item, extension: 'webm', label: 'WebM' } : item);
+  return candidates;
+}
+
+function formatFromMimeType(mimeType = '') {
+  const normalized = String(mimeType || '').toLowerCase();
+  if (normalized.includes('mp4')) return { mimeType, extension: 'mp4', label: 'MP4' };
+  return { mimeType: mimeType || 'video/webm', extension: 'webm', label: 'WebM' };
+}
+
+function selectRecorderFormat() {
+  const supported = recorderFormats().find((item) => MediaRecorder.isTypeSupported(item.mimeType));
+  return supported || { mimeType: '', extension: 'webm', label: 'WebM' };
+}
+
+function recorderOptions(format) {
+  return format?.mimeType ? { mimeType: format.mimeType } : undefined;
 }
 
 function updateTimer() {
@@ -104,11 +128,21 @@ function computeCrop(videoWidth, videoHeight) {
   return { sx, sy, sw, sh };
 }
 
-function drawLoop() {
+function drawFrame() {
   if (!rawStream || !crop) return;
   const context = recordCanvas.getContext('2d', { alpha: false });
   context.drawImage(previewVideo, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, recordCanvas.width, recordCanvas.height);
-  drawFrameId = requestAnimationFrame(drawLoop);
+}
+
+function startDrawLoop() {
+  stopDrawLoop();
+  drawFrame();
+  drawTimer = setInterval(drawFrame, Math.round(1000 / RECORDING_FPS));
+}
+
+function stopDrawLoop() {
+  if (drawTimer) clearInterval(drawTimer);
+  drawTimer = null;
 }
 
 async function waitForVideoReady() {
@@ -125,6 +159,8 @@ async function waitForVideoReady() {
 async function startRecording() {
   if (!region || recorder) return;
   try {
+    const snapshot = await api.getSettings?.();
+    if (snapshot?.settings?.enabled === false) throw new Error('截图与录屏已关闭，请先到设置中开启');
     rawStream = await navigator.mediaDevices.getUserMedia({
       audio: false,
       video: {
@@ -142,16 +178,32 @@ async function startRecording() {
     crop = computeCrop(previewVideo.videoWidth, previewVideo.videoHeight);
     recordCanvas.width = crop.sw;
     recordCanvas.height = crop.sh;
-    recordStream = recordCanvas.captureStream(60);
-    drawLoop();
+    recordStream = recordCanvas.captureStream(RECORDING_FPS);
+    startDrawLoop();
 
     chunks = [];
-    recorder = new MediaRecorder(recordStream, recorderOptions());
+    stopping = false;
+    streamEndedUnexpectedly = false;
+    recordingFormat = selectRecorderFormat();
+    recorder = new MediaRecorder(recordStream, recorderOptions(recordingFormat));
+    recordingFormat = formatFromMimeType(recorder.mimeType || recordingFormat.mimeType);
     recorder.ondataavailable = (event) => {
       if (event.data && event.data.size) chunks.push(event.data);
     };
     recorder.onstop = handleRecorderStop;
-    recorder.start(1000);
+    recorder.onerror = (event) => {
+      streamEndedUnexpectedly = true;
+      toast(friendlyError(event.error, '录屏编码异常，已尝试保存已录内容'));
+    };
+    for (const track of [...rawStream.getVideoTracks(), ...recordStream.getVideoTracks()]) {
+      track.addEventListener('ended', () => {
+        if (recorder && recorder.state !== 'inactive' && !stopping) {
+          streamEndedUnexpectedly = true;
+          stopRecording(true);
+        }
+      }, { once: true });
+    }
+    recorder.start();
     await showRecordingBorder();
 
     startedAt = Date.now();
@@ -160,7 +212,8 @@ async function startRecording() {
     setRecordingUi(true);
     setStatus('正在录制', 'recording');
     regionSize.textContent = crop.sw + ' × ' + crop.sh;
-    saveNote.textContent = '正在录制框选区域：' + crop.sw + ' × ' + crop.sh;
+    const fallbackText = recordingFormat.extension === 'mp4' ? '' : '，当前环境不支持 MP4 编码，已自动回退 WebM';
+    saveNote.textContent = '正在录制框选区域：' + crop.sw + ' × ' + crop.sh + ' · ' + recordingFormat.label + fallbackText;
   } catch (error) {
     const message = friendlyError(error, '录制启动失败，请检查屏幕录制权限');
     await hideRecordingBorder();
@@ -173,10 +226,7 @@ async function startRecording() {
 }
 
 function stopTracks() {
-  if (drawFrameId) {
-    cancelAnimationFrame(drawFrameId);
-    drawFrameId = 0;
-  }
+  stopDrawLoop();
   for (const activeStream of [recordStream, rawStream]) {
     if (activeStream) activeStream.getTracks().forEach((track) => track.stop());
   }
@@ -190,9 +240,10 @@ async function handleRecorderStop() {
   timer = null;
   await hideRecordingBorder();
   stopTracks();
-  const blob = new Blob(chunks, { type: 'video/webm' });
+  const blob = new Blob(chunks, { type: recordingFormat.mimeType || (recordingFormat.extension === 'mp4' ? 'video/mp4' : 'video/webm') });
   chunks = [];
   recorder = null;
+  stopping = false;
   setRecordingUi(false);
   setStatus('录制已结束');
   if (!blob.size) {
@@ -200,7 +251,10 @@ async function handleRecorderStop() {
     return toast('录制数据为空');
   }
   try {
-    const result = await api.saveVideo(await blob.arrayBuffer());
+    const result = await api.saveVideo(await blob.arrayBuffer(), {
+      mimeType: blob.type || recordingFormat.mimeType,
+      extension: recordingFormat.extension
+    });
     if (result?.canceled) {
       saveNote.textContent = '录制已结束，但没有保存文件。';
       return;
@@ -208,7 +262,7 @@ async function handleRecorderStop() {
     lastFilePath = result.filePath;
     openLastButton.disabled = false;
     document.body.classList.add('has-saved-video');
-    saveNote.textContent = '录屏已保存：' + result.filePath;
+    saveNote.textContent = (streamEndedUnexpectedly ? '录屏来源提前结束，已保存现有内容：' : '录屏已保存：') + result.filePath;
     toast('录屏已保存');
   } catch (error) {
     const message = friendlyError(error, '保存录屏失败');
@@ -217,9 +271,22 @@ async function handleRecorderStop() {
   }
 }
 
-function stopRecording() {
-  if (!recorder) return;
+function stopRecording(force = false) {
+  if (!recorder || stopping) return;
+  const elapsed = startedAt ? Date.now() - startedAt : 0;
+  if (!force && elapsed < MIN_RECORDING_MS) {
+    stopping = true;
+    setStatus('正在完成首段录制', 'pending');
+    stopButton.disabled = true;
+    setTimeout(() => {
+      stopping = false;
+      stopRecording();
+    }, MIN_RECORDING_MS - elapsed);
+    return;
+  }
+  stopping = true;
   hideRecordingBorder();
+  try { if (recorder.state === 'recording') recorder.requestData(); } catch {}
   recorder.stop();
   setStatus('正在保存录屏', 'pending');
   stopButton.disabled = true;
@@ -242,7 +309,7 @@ async function loadRegion() {
 }
 
 startButton.addEventListener('click', startRecording);
-stopButton.addEventListener('click', stopRecording);
+stopButton.addEventListener('click', () => stopRecording());
 openLastButton.addEventListener('click', () => lastFilePath && api.showItem(lastFilePath));
 document.getElementById('close-button').addEventListener('click', () => {
   if (recorder) stopRecording();
@@ -259,8 +326,15 @@ document.addEventListener('keydown', (event) => {
 
 window.addEventListener('beforeunload', () => {
   hideRecordingBorder();
-  if (recorder && recorder.state !== 'inactive') recorder.stop();
-  stopTracks();
+  try {
+    if (recorder && recorder.state !== 'inactive') {
+      try { if (recorder.state === 'recording') recorder.requestData(); } catch {}
+      recorder.stop();
+    }
+    else stopTracks();
+  } catch {
+    stopTracks();
+  }
 });
 
 document.body.dataset.platform = window.testCat?.platform || '';

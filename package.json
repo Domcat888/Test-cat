@@ -1,6 +1,6 @@
 {
   "name": "test-cat",
-  "version": "0.8.3",
+  "version": "0.8.4",
   "description": "A cross-platform desktop shell for organizing local testing tools.",
   "main": "src/main.js",
   "author": "Test cat",

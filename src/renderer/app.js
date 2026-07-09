@@ -2,7 +2,7 @@ const STORAGE_KEY = 'test-cat-modules-v1';
 const THEME_KEY = 'test-cat-theme';
 const TOOL_ORDER_KEY = 'test-cat-tool-order-v1';
 const TODO_KEY = 'test-cat-todos-v1';
-const BUILT_IN_TOOL_IDS = ['mobile-mirror', 'calculator', 'performance-monitor', 'weak-network', 'file-compare', 'log-analysis', 'app-package', 'mock-data'];
+const BUILT_IN_TOOL_IDS = ['mobile-mirror', 'calculator', 'performance-monitor', 'weak-network', 'file-compare', 'log-analysis', 'app-package', 'mock-data', 'timestamp-converter', 'formula-calculator', 'ai-test-assistant'];
 
 const state = {
   modules: loadModules(),
@@ -21,6 +21,9 @@ const pageCopy = {
   todo: ['测试任务清单', '把今天要验证的事情一项项拿下'],
   settings: ['设置', '调整 Test cat 的使用偏好']
 };
+
+const TODO_PRIORITY_WEIGHT = { high: 0, normal: 1, low: 2 };
+const THEMES = ['light', 'dark', 'purple'];
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -59,6 +62,23 @@ function escapeHtml(value = '') {
   return String(value).replace(/[&<>'"]/g, (char) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
   })[char]);
+}
+
+function todoCreatedWeight(todo) {
+  const idTime = Number(String(todo.id || '').split('-')[0]);
+  if (Number.isFinite(idTime)) return idTime;
+  const parsed = Date.parse(todo.createdAt || '');
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function sortedTodos(todos) {
+  return [...todos].sort((left, right) => {
+    if (left.done !== right.done) return left.done ? 1 : -1;
+    const priorityDelta = (TODO_PRIORITY_WEIGHT[left.priority] ?? TODO_PRIORITY_WEIGHT.normal)
+      - (TODO_PRIORITY_WEIGHT[right.priority] ?? TODO_PRIORITY_WEIGHT.normal);
+    if (priorityDelta) return priorityDelta;
+    return todoCreatedWeight(right) - todoCreatedWeight(left);
+  });
 }
 
 function moduleCard(module, sortable = false) {
@@ -160,6 +180,39 @@ function mockDataCard() {
     </article>`;
 }
 
+function timestampConverterCard() {
+  return `
+    <article class="module-card built-in-module sortable-tool" data-open-timestamp-converter data-tool-id="timestamp-converter" draggable="true" role="button" tabindex="0">
+      <div class="module-picture"><img src="../../assets/modules/timestamp-converter.png" alt="时间戳转换" /></div>
+      <span class="built-in-badge">内置工具</span>
+      <h3>时间戳转换</h3>
+      <p>支持秒、毫秒、微秒、纳秒时间戳和日期时间互转，一键复制常用格式。</p>
+      <div class="module-meta"><span class="module-tag">效率工具</span></div>
+    </article>`;
+}
+
+function formulaCalculatorCard() {
+  return `
+    <article class="module-card built-in-module sortable-tool" data-open-formula-calculator data-tool-id="formula-calculator" draggable="true" role="button" tabindex="0">
+      <div class="module-picture"><img src="../../assets/modules/formula-calculator.png" alt="公式运算" /></div>
+      <span class="built-in-badge">内置工具</span>
+      <h3>公式运算</h3>
+      <p>先生成变量词，再保存公式模板；输入变量值后自动代入计算并记录历史。</p>
+      <div class="module-meta"><span class="module-tag">数值测试</span></div>
+    </article>`;
+}
+
+function aiTestAssistantCard() {
+  return `
+    <article class="module-card built-in-module sortable-tool" data-open-ai-test-assistant data-tool-id="ai-test-assistant" draggable="true" role="button" tabindex="0">
+      <div class="module-picture"><img src="../../assets/modules/ai-test-assistant.png" alt="AI 测试助手" /></div>
+      <span class="built-in-badge">AI 工具箱</span>
+      <h3>AI 测试助手</h3>
+      <p>测试 AI 能力集合箱，先接入需求提取、附加条件和测试用例生成导出。</p>
+      <div class="module-meta"><span class="module-tag">AI 测试</span></div>
+    </article>`;
+}
+
 function normalizedToolOrder() {
   const available = [...BUILT_IN_TOOL_IDS, ...state.modules.map((module) => module.id)];
   const availableSet = new Set(available);
@@ -179,6 +232,9 @@ function homeToolCard(id) {
   if (id === 'log-analysis') return logAnalysisCard();
   if (id === 'app-package') return appPackageCard();
   if (id === 'mock-data') return mockDataCard();
+  if (id === 'timestamp-converter') return timestampConverterCard();
+  if (id === 'formula-calculator') return formulaCalculatorCard();
+  if (id === 'ai-test-assistant') return aiTestAssistantCard();
   const module = state.modules.find((item) => item.id === id);
   return module ? moduleCard(module, true) : '';
 }
@@ -356,6 +412,36 @@ function bindCardActions() {
       toast(error.message || '无法打开 Mock 数据生成器窗口');
     }
   });
+  const timestampConverter = $('[data-open-timestamp-converter]');
+  timestampConverter?.addEventListener('click', async () => {
+    if (state.dragOccurred) return;
+    try {
+      if (!window.testCat?.timestampConverter) throw new Error('请通过本地预览入口运行 Test cat');
+      await window.testCat.timestampConverter.openWindow();
+    } catch (error) {
+      toast(error.message || '无法打开时间戳转换窗口');
+    }
+  });
+  const formulaCalculator = $('[data-open-formula-calculator]');
+  formulaCalculator?.addEventListener('click', async () => {
+    if (state.dragOccurred) return;
+    try {
+      if (!window.testCat?.formulaCalculator) throw new Error('请通过本地预览入口运行 Test cat');
+      await window.testCat.formulaCalculator.openWindow();
+    } catch (error) {
+      toast(error.message || '无法打开公式运算窗口');
+    }
+  });
+  const aiTestAssistant = $('[data-open-ai-test-assistant]');
+  aiTestAssistant?.addEventListener('click', async () => {
+    if (state.dragOccurred) return;
+    try {
+      if (!window.testCat?.aiTestAssistant) throw new Error('请通过本地预览入口运行 Test cat');
+      await window.testCat.aiTestAssistant.openWindow();
+    } catch (error) {
+      toast(error.message || '无法打开 AI 测试助手窗口');
+    }
+  });
   $$('.module-card[role="button"]').forEach((card) => card.addEventListener('keydown', (event) => {
     if (event.target !== card || !['Enter', ' '].includes(event.key)) return;
     event.preventDefault();
@@ -366,11 +452,11 @@ function bindCardActions() {
 
 function renderTodos() {
   const list = $('#todo-list');
-  const filtered = state.todos.filter((todo) => {
+  const filtered = sortedTodos(state.todos.filter((todo) => {
     if (state.todoFilter === 'pending') return !todo.done;
     if (state.todoFilter === 'done') return todo.done;
     return true;
-  });
+  }));
   const pendingCount = state.todos.filter((todo) => !todo.done).length;
   $('#todo-count').textContent = `${pendingCount} 项待完成`;
   $('#todo-empty').hidden = filtered.length > 0;
@@ -432,12 +518,29 @@ function toast(message) {
   toast.timer = setTimeout(() => node.classList.remove('show'), 2200);
 }
 
+function normalizeTheme(theme) {
+  return THEMES.includes(theme) ? theme : 'light';
+}
+
+function nextTheme(theme) {
+  const current = normalizeTheme(theme);
+  return THEMES[(THEMES.indexOf(current) + 1) % THEMES.length];
+}
+
 function setTheme(theme) {
-  const isDark = theme === 'dark';
+  const normalized = normalizeTheme(theme);
+  const isDark = normalized === 'dark';
+  const isPurple = normalized === 'purple';
   document.body.classList.toggle('dark', isDark);
+  document.body.classList.toggle('purple-eye', isPurple);
   $('#theme-switch').checked = isDark;
-  $('#theme-button').textContent = isDark ? '☾' : '☼';
-  localStorage.setItem(THEME_KEY, theme);
+  const themeSelect = $('#theme-select');
+  if (themeSelect) themeSelect.value = normalized;
+  const button = $('#theme-button');
+  button.textContent = isPurple ? '✦' : (isDark ? '☾' : '☼');
+  button.title = isPurple ? '当前：紫色护眼，点击切换主题' : (isDark ? '当前：深色模式，点击切换主题' : '当前：浅色清爽，点击切换主题');
+  button.setAttribute('aria-label', button.title);
+  localStorage.setItem(THEME_KEY, normalized);
 }
 
 function renderCaptureSettings(snapshot) {
@@ -447,7 +550,21 @@ function renderCaptureSettings(snapshot) {
   $('#capture-screenshot-shortcut').value = settings.screenshotShortcut || 'Alt+Shift+S';
   $('#capture-recorder-shortcut').value = settings.recorderShortcut || 'Alt+Shift+R';
   $('#capture-screenshot-action').value = settings.screenshotAction || 'toolbar';
+  applyCaptureEnabledState(settings.enabled !== false);
   renderCaptureShortcutStatus(shortcutStatus);
+}
+
+function applyCaptureEnabledState(enabled) {
+  [
+    '#capture-screenshot-shortcut',
+    '#capture-recorder-shortcut',
+    '#capture-screenshot-action',
+    '#capture-start-screenshot',
+    '#capture-open-recorder'
+  ].forEach((selector) => {
+    const node = $(selector);
+    if (node) node.disabled = !enabled;
+  });
 }
 
 function renderCaptureShortcutStatus(status) {
@@ -455,7 +572,7 @@ function renderCaptureShortcutStatus(status) {
   if (!node) return;
   const problems = [];
   if (status?.enabled === false) {
-    node.textContent = '快捷键已关闭';
+    node.textContent = '截图与录屏已关闭';
     node.className = 'setting-status warn';
     return;
   }
@@ -563,16 +680,200 @@ async function loadCaptureSettings() {
   }
 }
 
-async function saveCaptureSettings() {
+async function saveCaptureSettings(showToast = true) {
   try {
     if (!window.testCat?.capture) throw new Error('请通过本地预览入口运行 Test cat');
     const result = await window.testCat.capture.saveSettings(captureSettingsFromForm());
     renderCaptureSettings(result);
     const status = result.shortcutStatus || {};
     const failed = [status.screenshot, status.recorder].filter((item) => item && !item.registered);
-    toast(failed.length ? '配置已保存，但有快捷键被占用' : '截图与录屏快捷键已保存');
+    if (showToast) {
+      if (result.settings?.enabled === false) toast('截图与录屏已关闭');
+      else toast(failed.length ? '配置已保存，但有快捷键被占用' : '截图与录屏快捷键已保存');
+    }
   } catch (error) {
     toast(error.message || '保存截图配置失败');
+  }
+}
+
+function renderAiSettings(snapshot) {
+  const settings = snapshot?.settings;
+  if (!settings) return;
+  $('#ai-enabled').checked = settings.enabled !== false;
+  $('#ai-base-url').value = settings.baseUrl || '';
+  $('#ai-model').value = settings.model || '';
+  $('#ai-api-key').value = settings.apiKey || '';
+  $('#ai-temperature').value = settings.temperature ?? 0.2;
+  renderAiPromptSummary(settings.testCasePrompt || '');
+  applyAiEnabledState(settings.enabled !== false, settings.locked === true);
+  renderAiStatus(snapshot);
+}
+
+function renderAiPromptSummary(prompt = '') {
+  const node = $('#ai-prompt-summary');
+  if (!node) return;
+  node.dataset.prompt = prompt;
+  const value = String(prompt || '').trim();
+  if (!value) {
+    node.textContent = '还没有配置提示词';
+    return;
+  }
+  node.textContent = value.length > 180 ? `${value.slice(0, 180)}\n……共 ${value.length} 字，点击编辑查看完整内容` : value;
+}
+
+function renderAiStatus(snapshot, override = '') {
+  const node = $('#ai-settings-status');
+  if (!node) return;
+  if (override) {
+    node.textContent = override;
+    node.className = override.includes('成功') ? 'setting-status ok' : (override.includes('失败') || override.includes('请') ? 'setting-status warn' : 'setting-status');
+    return;
+  }
+  if (snapshot?.settings?.enabled === false) {
+    node.textContent = snapshot.settings.locked ? '已锁定 · AI 功能已关闭' : 'AI 功能已关闭';
+    node.className = 'setting-status warn';
+    return;
+  }
+  if (snapshot?.settings?.locked) {
+    node.textContent = snapshot.ready ? '配置已锁定' : '配置已锁定但未填完整';
+    node.className = snapshot.ready ? 'setting-status ok' : 'setting-status warn';
+    return;
+  }
+  if (snapshot?.ready) {
+    node.textContent = 'AI 配置已就绪';
+    node.className = 'setting-status ok';
+    return;
+  }
+  const missing = snapshot?.missing?.join('、') || '配置';
+  node.textContent = '待填写：' + missing;
+  node.className = 'setting-status warn';
+}
+
+function applyAiEnabledState(enabled, locked = false) {
+  const card = document.querySelector('.ai-settings-card');
+  card?.classList.toggle('locked', locked);
+  const lockButton = $('#ai-lock-settings');
+  if (lockButton) {
+    lockButton.textContent = locked ? '解锁配置' : '锁定配置';
+    lockButton.dataset.locked = locked ? 'true' : 'false';
+    lockButton.classList.toggle('danger-button', locked);
+    lockButton.classList.toggle('secondary-button', !locked);
+  }
+  const disabled = !enabled || locked;
+  [
+    '#ai-base-url',
+    '#ai-model',
+    '#ai-api-key',
+    '#ai-temperature',
+    '#ai-save-settings',
+    '#ai-open-prompt-editor'
+  ].forEach((selector) => {
+    const node = $(selector);
+    if (node) node.disabled = disabled;
+  });
+  const enabledSwitch = $('#ai-enabled');
+  if (enabledSwitch) enabledSwitch.disabled = locked;
+  const testButton = $('#ai-test-connection');
+  if (testButton) testButton.disabled = !enabled;
+}
+
+function aiSettingsFromForm() {
+  return {
+    enabled: $('#ai-enabled').checked,
+    baseUrl: $('#ai-base-url').value,
+    model: $('#ai-model').value,
+    apiKey: $('#ai-api-key').value,
+    temperature: $('#ai-temperature').value,
+    testCasePrompt: $('#ai-prompt-summary')?.dataset.prompt || '',
+    locked: $('#ai-lock-settings')?.dataset.locked === 'true'
+  };
+}
+
+async function loadAiSettings() {
+  try {
+    if (!window.testCat?.aiTestAssistant) throw new Error('请通过本地预览入口运行 Test cat');
+    renderAiSettings(await window.testCat.aiTestAssistant.getSettings());
+  } catch (error) {
+    const node = $('#ai-settings-status');
+    node.textContent = error.message || '读取失败';
+    node.className = 'setting-status warn';
+  }
+}
+
+async function saveAiSettings(showToast = true) {
+  try {
+    if (!window.testCat?.aiTestAssistant) throw new Error('请通过本地预览入口运行 Test cat');
+    const result = await window.testCat.aiTestAssistant.saveSettings(aiSettingsFromForm());
+    renderAiSettings(result);
+    if (showToast) toast(result.settings.enabled ? 'AI 设置已保存' : 'AI 功能已关闭');
+    return result;
+  } catch (error) {
+    toast(error.message || '保存 AI 设置失败');
+    throw error;
+  }
+}
+
+async function testAiConnection() {
+  const button = $('#ai-test-connection');
+  try {
+    button.disabled = true;
+    if ($('#ai-lock-settings')?.dataset.locked !== 'true') await saveAiSettings(false);
+    renderAiStatus(null, '正在测试连接…');
+    if (!window.testCat?.aiTestAssistant) throw new Error('请通过本地预览入口运行 Test cat');
+    await window.testCat.aiTestAssistant.testConnection();
+    renderAiStatus(null, 'AI 连接成功');
+    toast('AI 连接成功');
+  } catch (error) {
+    const message = error.message || 'AI 连接失败';
+    renderAiStatus(null, 'AI 连接失败：' + message.slice(0, 40));
+    toast(message);
+  } finally {
+    button.disabled = !$('#ai-enabled').checked;
+  }
+}
+
+function openAiPromptEditor() {
+  if ($('#ai-lock-settings')?.dataset.locked === 'true') return toast('配置已锁定，请先解锁');
+  const editor = $('#ai-prompt-editor');
+  editor.value = $('#ai-prompt-summary')?.dataset.prompt || '';
+  updateAiPromptEditorCount();
+  $('#ai-prompt-modal').hidden = false;
+  setTimeout(() => editor.focus(), 0);
+}
+
+function updateAiPromptEditorCount() {
+  const editor = $('#ai-prompt-editor');
+  const count = $('#ai-prompt-count');
+  if (count) count.textContent = `${editor.value.length} 字`;
+}
+
+async function closeAiPromptEditor() {
+  const modal = $('#ai-prompt-modal');
+  if (modal.hidden) return;
+  modal.hidden = true;
+  if ($('#ai-lock-settings')?.dataset.locked === 'true') return;
+  try {
+    if (!window.testCat?.aiTestAssistant) throw new Error('请通过本地预览入口运行 Test cat');
+    const result = await window.testCat.aiTestAssistant.saveSettings({
+      testCasePrompt: $('#ai-prompt-editor').value
+    });
+    renderAiSettings(result);
+    toast('提示词已自动保存');
+  } catch (error) {
+    toast(error.message || '提示词自动保存失败');
+  }
+}
+
+async function toggleAiLockSettings() {
+  try {
+    if (!window.testCat?.aiTestAssistant) throw new Error('请通过本地预览入口运行 Test cat');
+    const locked = $('#ai-lock-settings')?.dataset.locked === 'true';
+    const payload = locked ? { locked: false } : { ...aiSettingsFromForm(), locked: true };
+    const result = await window.testCat.aiTestAssistant.saveSettings(payload);
+    renderAiSettings(result);
+    toast(result.settings.locked ? 'AI 配置已锁定' : 'AI 配置已解锁');
+  } catch (error) {
+    toast(error.message || '锁定配置失败');
   }
 }
 
@@ -588,6 +889,7 @@ function renderCompanionPetSettings(snapshot) {
   const movementDescriptionNode = $('#companion-pet-movement-description');
   const walkButton = $('#companion-pet-walk-now');
   const hideButton = $('#companion-pet-hide-now');
+  const petSelect = $('#companion-pet-active');
   if (titleNode) titleNode.textContent = '陪伴宠物 · ' + petName;
   if (descriptionNode) descriptionNode.textContent = pet.description || '';
   if (enabledTitleNode) enabledTitleNode.textContent = '让' + petName + '出现在桌面';
@@ -595,6 +897,12 @@ function renderCompanionPetSettings(snapshot) {
   if (movementDescriptionNode) movementDescriptionNode.textContent = petName + '会在桌面范围内散步，移动时播放动作帧。';
   if (walkButton) walkButton.textContent = '让' + petName + '扭两步';
   if (hideButton) hideButton.textContent = '让' + petName + '回窝';
+  if (petSelect && Array.isArray(snapshot.pets)) {
+    petSelect.innerHTML = snapshot.pets.map((item) => {
+      return `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`;
+    }).join('');
+    petSelect.value = settings.activePetId || pet.id || 'yuexinmiao';
+  }
   $('#companion-pet-enabled').checked = settings.enabled !== false;
   $('#companion-pet-movement').checked = settings.movementEnabled !== false;
   $('#companion-pet-walk-interval').value = settings.walkIntervalSeconds || 24;
@@ -618,6 +926,7 @@ function renderCompanionPetSettings(snapshot) {
 
 function companionPetSettingsFromForm() {
   return {
+    activePetId: $('#companion-pet-active')?.value || undefined,
     enabled: $('#companion-pet-enabled').checked,
     movementEnabled: $('#companion-pet-movement').checked,
     walkIntervalSeconds: $('#companion-pet-walk-interval').value,
@@ -664,6 +973,10 @@ $('#module-modal').addEventListener('click', (event) => {
   if (event.target === $('#module-modal')) closeModal();
 });
 
+$('#ai-prompt-modal').addEventListener('click', (event) => {
+  if (event.target === $('#ai-prompt-modal')) closeAiPromptEditor();
+});
+
 $('#module-form').addEventListener('submit', (event) => {
   event.preventDefault();
   const name = $('#module-name').value.trim();
@@ -686,6 +999,7 @@ $('#module-form').addEventListener('submit', (event) => {
 });
 
 document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && !$('#ai-prompt-modal').hidden) closeAiPromptEditor();
   if (event.key === 'Escape' && !$('#module-modal').hidden) closeModal();
 });
 
@@ -728,8 +1042,21 @@ $('#todo-clear-completed').addEventListener('click', () => {
   toast(`已清理 ${completed} 项已完成任务`);
 });
 
-$('#theme-button').addEventListener('click', () => setTheme(document.body.classList.contains('dark') ? 'light' : 'dark'));
+$('#theme-button').addEventListener('click', () => setTheme(nextTheme(localStorage.getItem(THEME_KEY))));
+$('#theme-select').addEventListener('change', (event) => setTheme(event.target.value));
 $('#theme-switch').addEventListener('change', (event) => setTheme(event.target.checked ? 'dark' : 'light'));
+$('#ai-enabled').addEventListener('change', (event) => {
+  applyAiEnabledState(event.target.checked);
+  saveAiSettings();
+});
+$('#ai-save-settings').addEventListener('click', () => saveAiSettings());
+$('#ai-test-connection').addEventListener('click', testAiConnection);
+$('#ai-lock-settings').addEventListener('click', toggleAiLockSettings);
+$('#ai-open-prompt-editor').addEventListener('click', openAiPromptEditor);
+$('#ai-close-prompt-editor').addEventListener('click', closeAiPromptEditor);
+$('#ai-done-prompt-editor').addEventListener('click', closeAiPromptEditor);
+$('#ai-prompt-editor').addEventListener('input', updateAiPromptEditorCount);
+$('#companion-pet-active')?.addEventListener('change', () => saveCompanionPetSettings(false));
 $('#companion-pet-enabled').addEventListener('change', () => saveCompanionPetSettings(false));
 $('#companion-pet-movement').addEventListener('change', () => saveCompanionPetSettings(false));
 $('#companion-pet-water-enabled').addEventListener('change', () => saveCompanionPetSettings(false));
@@ -744,9 +1071,9 @@ $('#companion-pet-hide-now').addEventListener('click', async () => {
     if (!window.testCat?.companionPet) throw new Error('请通过本地预览入口运行 Test cat');
     const result = await window.testCat.companionPet.hideNow();
     renderCompanionPetSettings(result);
-    toast('月薪喵已回窝');
+    toast((result.activePet?.name || '陪伴宠物') + '已回窝');
   } catch (error) {
-    toast(error.message || '无法让月薪喵回窝');
+    toast(error.message || '无法让陪伴宠物回窝');
   }
 });
 $('#companion-pet-walk-now').addEventListener('click', async () => {
@@ -757,17 +1084,22 @@ $('#companion-pet-walk-now').addEventListener('click', async () => {
       await saveCompanionPetSettings(false);
     }
     await window.testCat.companionPet.walkNow();
-    toast('月薪喵出门扭扭了');
+    toast(($('#companion-pet-active')?.selectedOptions?.[0]?.textContent || '陪伴宠物') + '出门扭扭了');
   } catch (error) {
-    toast(error.message || '无法让月薪喵散步');
+    toast(error.message || '无法让陪伴宠物散步');
   }
 });
 window.testCat?.companionPet?.onSettingsChanged((snapshot) => renderCompanionPetSettings(snapshot));
 bindShortcutCapture($('#capture-screenshot-shortcut'));
 bindShortcutCapture($('#capture-recorder-shortcut'));
+$('#capture-enabled').addEventListener('change', (event) => {
+  applyCaptureEnabledState(event.target.checked);
+  saveCaptureSettings();
+});
 $('#capture-save-settings').addEventListener('click', saveCaptureSettings);
 $('#capture-start-screenshot').addEventListener('click', async () => {
   try {
+    if (!$('#capture-enabled').checked) throw new Error('请先开启截图与录屏功能');
     if (!window.testCat?.capture) throw new Error('请通过本地预览入口运行 Test cat');
     await window.testCat.capture.startScreenshot();
   } catch (error) {
@@ -776,6 +1108,7 @@ $('#capture-start-screenshot').addEventListener('click', async () => {
 });
 $('#capture-open-recorder').addEventListener('click', async () => {
   try {
+    if (!$('#capture-enabled').checked) throw new Error('请先开启截图与录屏功能');
     if (!window.testCat?.capture) throw new Error('请通过本地预览入口运行 Test cat');
     await window.testCat.capture.openRecorder();
   } catch (error) {
@@ -810,6 +1143,7 @@ $('#import-input').addEventListener('change', async (event) => {
 });
 
 setTheme(localStorage.getItem(THEME_KEY) || 'light');
+loadAiSettings();
 loadCaptureSettings();
 loadCompanionPetSettings();
 render();
