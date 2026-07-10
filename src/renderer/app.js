@@ -8,6 +8,7 @@ const state = {
   modules: loadModules(),
   toolOrder: loadJson(TOOL_ORDER_KEY, []),
   todos: loadJson(TODO_KEY, []),
+  updateInfo: null,
   page: 'home',
   filter: 'all',
   todoFilter: 'all',
@@ -634,6 +635,108 @@ function toast(message) {
   toast.timer = setTimeout(() => node.classList.remove('show'), 2200);
 }
 
+function formatBytes(value = 0) {
+  const bytes = Number(value) || 0;
+  if (!bytes) return '';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let size = bytes;
+  let index = 0;
+  while (size >= 1024 && index < units.length - 1) {
+    size /= 1024;
+    index += 1;
+  }
+  return `${size.toFixed(size >= 100 || index === 0 ? 0 : 1)} ${units[index]}`;
+}
+
+function setUpdateStatus(title, text, phase = '') {
+  const card = $('#update-status-card');
+  if (!card) return;
+  card.className = `update-status-card${phase ? ` ${phase}` : ''}`;
+  $('#update-status-title').textContent = title;
+  $('#update-status-text').textContent = text;
+}
+
+function renderUpdateNotes(notes = '') {
+  const list = $('#update-notes');
+  if (!list) return;
+  const items = String(notes || '')
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^#+\s*/, '').replace(/^[-*]\s*/, '').trim())
+    .filter(Boolean)
+    .slice(0, 8);
+  list.hidden = !items.length;
+  list.innerHTML = items.map((item) => `<li>${escapeHtml(item)}</li>`).join('');
+}
+
+async function checkForUpdates() {
+  const checkButton = $('#check-update-button');
+  const downloadButton = $('#download-update-button');
+  if (!checkButton || !downloadButton) return;
+  try {
+    if (!window.testCat?.appUpdate) throw new Error('请通过本地预览入口运行 Test cat');
+    checkButton.disabled = true;
+    downloadButton.hidden = true;
+    state.updateInfo = null;
+    setUpdateStatus('正在检查更新…', '正在连接 GitHub Releases，请稍等。');
+    renderUpdateNotes('');
+    const result = await window.testCat.appUpdate.check();
+    state.updateInfo = result;
+    const current = result.currentVersion || '当前版本';
+    const latest = result.latestVersion || '未知';
+    if (result.hasUpdate && result.asset) {
+      const size = result.asset.size ? ` · ${formatBytes(result.asset.size)}` : '';
+      setUpdateStatus(`发现新版本 v${latest}`, `将下载 ${result.profile?.label || '安装包'}：${result.asset.name}${size}`, 'ready');
+      renderUpdateNotes(result.release?.notes || '');
+      downloadButton.hidden = false;
+      downloadButton.disabled = false;
+      toast(`发现新版本 v${latest}`);
+      return;
+    }
+    if (result.hasUpdate && !result.asset) {
+      setUpdateStatus(`发现新版本 v${latest}`, '但是该 Release 里没有匹配当前系统的安装包，请到 GitHub 手动下载。', 'error');
+      renderUpdateNotes(result.release?.notes || '');
+      return;
+    }
+    if (result.isNewerCurrent) {
+      setUpdateStatus(`当前版本 v${current}`, `当前开发版本比 GitHub 最新 Release v${latest} 更新。`, 'ready');
+      renderUpdateNotes(result.release?.notes || '');
+      return;
+    }
+    setUpdateStatus(`已是最新版本 v${current}`, `GitHub 最新 Release 也是 v${latest}。`, 'ready');
+    renderUpdateNotes(result.release?.notes || '');
+    toast('当前已是最新版本');
+  } catch (error) {
+    state.updateInfo = null;
+    downloadButton.hidden = true;
+    setUpdateStatus('检查更新失败', error.message || '请检查网络或 GitHub Release 配置。', 'error');
+    toast(error.message || '检查更新失败');
+  } finally {
+    checkButton.disabled = false;
+  }
+}
+
+async function downloadLatestUpdate() {
+  const button = $('#download-update-button');
+  const asset = state.updateInfo?.asset;
+  if (!button || !asset?.downloadUrl) return toast('请先检查更新');
+  try {
+    button.disabled = true;
+    setUpdateStatus('正在下载更新包…', `正在下载 ${asset.name}，完成后会自动打开安装包。`);
+    const result = await window.testCat.appUpdate.download({
+      assetName: asset.name,
+      downloadUrl: asset.downloadUrl,
+      version: state.updateInfo.latestVersion
+    });
+    setUpdateStatus('更新包已下载', result.opened ? `已打开安装包：${result.filePath}` : `已下载到：${result.filePath}。请在文件夹中手动打开。`, 'ready');
+    toast('更新包已下载');
+  } catch (error) {
+    setUpdateStatus('下载更新失败', error.message || '请稍后重试，或到 GitHub Release 手动下载。', 'error');
+    toast(error.message || '下载更新失败');
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function normalizeTheme(theme) {
   return THEMES.includes(theme) ? theme : 'light';
 }
@@ -1243,6 +1346,8 @@ $('#capture-open-recorder').addEventListener('click', async () => {
   }
 });
 window.testCat?.capture?.onNotice((message) => toast(message));
+$('#check-update-button')?.addEventListener('click', checkForUpdates);
+$('#download-update-button')?.addEventListener('click', downloadLatestUpdate);
 $('#import-button').addEventListener('click', () => $('#import-input').click());
 $('#import-input').addEventListener('change', async (event) => {
   const [file] = event.target.files;

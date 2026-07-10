@@ -7,3 +7,5 @@ release/
 .DS_Store
 npm-debug.log*
 src/renderer/mobile-mirror.bundle.js
+electron-v*.zip
+vendor/electron-v*.zip

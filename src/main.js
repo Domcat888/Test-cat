@@ -1,6 +1,8 @@
 const path = require('node:path');
 const fs = require('node:fs');
 const fsp = require('node:fs/promises');
+const { Readable } = require('node:stream');
+const { pipeline } = require('node:stream/promises');
 const {
   app,
   BrowserWindow,
@@ -22,6 +24,12 @@ const { FileCompareService } = require('./file-compare-service');
 const { LogAnalysisService } = require('./log-analysis-service');
 const { AppPackageService } = require('./app-package-service');
 const { AiTestAssistantService } = require('./ai-test-assistant-service');
+const {
+  UPDATE_API_URL,
+  UPDATE_REPOSITORY,
+  buildUpdateResult,
+  normalizeGithubRelease
+} = require('./update-service');
 
 const isMac = process.platform === 'darwin';
 let mainWindow = null;
@@ -535,6 +543,77 @@ function aiSettingsSnapshot() {
       settings.apiKey ? '' : 'API Key'
     ].filter(Boolean)
   };
+}
+
+function currentUpdateRuntimeInfo() {
+  let macVersion = '';
+  try {
+    macVersion = typeof process.getSystemVersion === 'function' ? process.getSystemVersion() : '';
+  } catch {}
+  return {
+    platform: process.platform,
+    arch: process.arch,
+    macVersion
+  };
+}
+
+async function fetchGithubLatestRelease() {
+  const response = await fetch(UPDATE_API_URL, {
+    headers: {
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'Test-cat-updater'
+    }
+  });
+  const text = await response.text();
+  let data = null;
+  try { data = JSON.parse(text); } catch {}
+  if (!response.ok) {
+    const message = data?.message || text || `GitHub 更新检查失败：${response.status}`;
+    throw new Error(message);
+  }
+  return normalizeGithubRelease(data || {});
+}
+
+async function checkAppUpdate() {
+  const release = await fetchGithubLatestRelease();
+  return buildUpdateResult({
+    currentVersion: app.getVersion(),
+    release,
+    ...currentUpdateRuntimeInfo()
+  });
+}
+
+function safeDownloadName(name = 'Test cat update') {
+  const basename = path.basename(String(name || 'Test cat update'));
+  return basename.replace(/[\\/:*?"<>|]/g, '-').slice(0, 160) || 'Test cat update';
+}
+
+async function downloadAppUpdate(payload = {}) {
+  const downloadUrl = String(payload.downloadUrl || '').trim();
+  const assetName = safeDownloadName(payload.assetName || payload.name || '');
+  if (!/^https:\/\/(?:github\.com|objects\.githubusercontent\.com|release-assets\.githubusercontent\.com)\//i.test(downloadUrl)) {
+    throw new Error('更新包下载地址不安全，已取消下载。');
+  }
+  if (!assetName || assetName === 'Test cat update') throw new Error('更新包文件名无效。');
+  const response = await fetch(downloadUrl, {
+    headers: {
+      Accept: 'application/octet-stream',
+      'User-Agent': 'Test-cat-updater'
+    }
+  });
+  if (!response.ok) throw new Error(`更新包下载失败：${response.status}`);
+  const downloadsDir = app.getPath('downloads');
+  await fsp.mkdir(downloadsDir, { recursive: true });
+  const filePath = path.join(downloadsDir, assetName);
+  if (!response.body) {
+    const buffer = Buffer.from(await response.arrayBuffer());
+    await fsp.writeFile(filePath, buffer);
+  } else {
+    await pipeline(Readable.fromWeb(response.body), fs.createWriteStream(filePath));
+  }
+  const openError = await shell.openPath(filePath);
+  if (openError) shell.showItemInFolder(filePath);
+  return { filePath, opened: !openError, openError };
 }
 
 function pickCompanionPetText(lines, fallback = '') {
@@ -1496,6 +1575,8 @@ function setupIpc() {
     mobileMirrorWindow.setAlwaysOnTop(Boolean(enabled), isMac ? 'floating' : 'normal');
     return mobileMirrorWindow.isAlwaysOnTop();
   });
+  ipcMain.handle('app-update:check', () => checkAppUpdate());
+  ipcMain.handle('app-update:download', (_event, payload = {}) => downloadAppUpdate(payload));
   ipcMain.handle('calculator:open-window', () => {
     createCalculatorWindow();
     return true;

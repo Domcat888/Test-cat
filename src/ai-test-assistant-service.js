@@ -338,7 +338,7 @@ function createZip(files) {
 function createXmindBuffer(rows, title) {
   const content = JSON.stringify(xmindContent(rows, title), null, 2);
   const metadata = JSON.stringify({
-    creator: { name: 'Test cat', version: '0.8.9' },
+    creator: { name: 'Test cat', version: '0.9.0' },
     activeSheetId: JSON.parse(content)[0]?.id
   }, null, 2);
   const manifest = JSON.stringify({

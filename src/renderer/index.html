@@ -37,7 +37,7 @@
           <span>🐾</span>
           <p><b>保持专注</b><br />把常用测试工具放到一个地方。</p>
         </div>
-        <div class="version">Test cat · v0.8.9</div>
+        <div class="version">Test cat · v0.9.0</div>
       </aside>
 
       <main class="main">
@@ -261,7 +261,7 @@
           <div class="settings-card about-card">
             <div class="about-product">
               <img src="../../assets/icon.png" alt="" />
-              <div><h2>Test cat</h2><p>跨平台测试工具工作台 · 版本 0.8.9</p></div>
+              <div><h2>Test cat</h2><p>跨平台测试工具工作台 · 版本 0.9.0</p></div>
             </div>
             <div class="project-meta-panel">
               <h3>项目信息</h3>
@@ -280,16 +280,33 @@
                 </div>
               </div>
             </div>
+            <div class="update-panel">
+              <div class="update-panel-head">
+                <div>
+                  <h3>软件更新</h3>
+                  <p>更新源：GitHub Releases · Domcat888/Test-cat</p>
+                </div>
+                <div class="update-actions">
+                  <button class="secondary-button compact-button" id="check-update-button" type="button">检查更新</button>
+                  <button class="primary-button compact-button" id="download-update-button" type="button" hidden>下载并打开</button>
+                </div>
+              </div>
+              <div class="update-status-card" id="update-status-card">
+                <strong id="update-status-title">当前版本 v0.9.0</strong>
+                <p id="update-status-text">点击“检查更新”，会自动选择适合当前系统的安装包。</p>
+              </div>
+              <ul class="update-notes" id="update-notes" hidden></ul>
+            </div>
             <div class="changelog-panel">
               <h3>更新日志</h3>
               <article class="changelog-entry latest">
-                <div><strong>v0.8.9</strong><time>2026-07-10</time><span>当前版本</span></div>
+                <div><strong>v0.9.0</strong><time>2026-07-10</time><span>当前版本</span></div>
                 <ul>
-                  <li>测试待办新增闹钟提醒时间。</li>
-                  <li>任务会在还差 30 分钟、10 分钟、5 分钟时通过桌面宠物提醒。</li>
-                  <li>宠物开启时正常提醒；宠物关闭时临时出现，提醒完成后自动回窝。</li>
-                  <li>待办列表新增闹钟时间和剩余时间显示。</li>
-                  <li>提醒记录会写入待办数据，避免同一节点重复提醒。</li>
+                  <li>关于页新增 GitHub Releases 检查更新能力，更新源为 Domcat888/Test-cat。</li>
+                  <li>支持自动识别当前系统并选择 mac universal、Windows x64 或 Catalina Intel 兼容包。</li>
+                  <li>发现新版本后可一键下载并打开安装包，方便测试同学本地更新。</li>
+                  <li>更新面板会显示 Release notes 和安装包大小。</li>
+                  <li>下载地址限制为 GitHub 官方 Release 域名，降低误下载风险。</li>
                 </ul>
               </article>
             </div>
