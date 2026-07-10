@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const path = require('node:path');
 const test = require('node:test');
 const zlib = require('node:zlib');
@@ -109,14 +110,72 @@ test('classifyInstallFailure explains common adb install failures', () => {
   assert.equal(__test.classifyInstallFailure(new Error('INSTALL_FAILED_NO_MATCHING_ABIS')).code, 'abi-mismatch');
 });
 
+test('classifyClearDataFailure explains OEM CLEAR_APP_USER_DATA restrictions', () => {
+  const failure = __test.classifyClearDataFailure({
+    stderr: 'java.lang.SecurityException: PID 20787 does not have permission android.permission.CLEAR_APP_USER_DATA to clear data of package com.example.game'
+  });
+  assert.equal(failure.code, 'clear-data-permission-denied');
+  assert.match(failure.message, /系统禁止 ADB 清除/);
+});
+
+test('clearData falls back to run-as for debuggable packages when pm clear is blocked', async () => {
+  const calls = [];
+  const service = new AppPackageService({ dialog: {}, getWindow: () => null });
+  service.adb = async (args) => {
+    calls.push(args);
+    const command = args.join(' ');
+    if (command.includes('pm clear') || command.includes('cmd package clear')) {
+      const error = new Error('SecurityException: no android.permission.CLEAR_APP_USER_DATA to clear data');
+      error.stderr = error.message;
+      throw error;
+    }
+    return '';
+  };
+
+  const [result] = await service.clearData({ serials: ['ABC123'], packageName: 'com.example.debug' });
+  assert.equal(result.ok, true);
+  assert.match(result.output, /run-as 兜底/);
+  assert.ok(calls.some((args) => args.includes('run-as')));
+  assert.ok(calls.some((args) => args.includes('force-stop')));
+});
+
+test('clearData returns a friendly message when both pm clear and run-as are blocked', async () => {
+  const service = new AppPackageService({ dialog: {}, getWindow: () => null });
+  service.adb = async (args) => {
+    const command = args.join(' ');
+    if (command.includes('run-as')) {
+      const error = new Error('run-as: package not debuggable');
+      error.stderr = error.message;
+      throw error;
+    }
+    if (command.includes('force-stop')) return '';
+    const error = new Error('SecurityException: PID does not have permission android.permission.CLEAR_APP_USER_DATA to clear data');
+    error.stderr = error.message;
+    throw error;
+  };
+
+  const [result] = await service.clearData({ serials: ['ABC123'], packageName: 'com.example.release' });
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'clear-data-permission-denied');
+  assert.match(result.message, /手动清除/);
+  assert.doesNotMatch(result.message, /SecurityException/);
+});
+
 test('reads deflated zip entries and parses XML Android manifest', () => {
   const manifest = '<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.test.cat" android:versionName="1.2.3" android:versionCode="42"><uses-sdk android:minSdkVersion="23" android:targetSdkVersion="35"/><uses-permission android:name="android.permission.INTERNET"/><application android:label="Test Cat" android:debuggable="true"/></manifest>';
-  const buffer = zip([{ name: 'AndroidManifest.xml', data: manifest }]);
+  const cert = Buffer.from('fake certificate bytes');
+  const buffer = zip([{ name: 'AndroidManifest.xml', data: manifest }, { name: 'META-INF/CERT.RSA', data: cert }]);
   const parsed = __test.readZipEntries(buffer);
   const entry = parsed.entries[0];
   assert.equal(__test.readZipEntry(buffer, entry).toString(), manifest);
   assert.equal(__test.parseAndroidManifestXml(manifest).packageName, 'com.test.cat');
   assert.equal(__test.parseAndroidManifestXml(manifest).versionCode, '42');
+  const apk = __test.parseApkInfo(buffer, path.join('/tmp', 'demo.apk'), parsed);
+  assert.equal(apk.md5, crypto.createHash('md5').update(buffer).digest('hex'));
+  assert.equal(apk.sha1, crypto.createHash('sha1').update(buffer).digest('hex'));
+  assert.equal(apk.signature.certificates[0].md5, crypto.createHash('md5').update(cert).digest('hex'));
+  assert.equal(apk.minSdkLabel, 'Android 6.0 (MARSHMALLOW)');
+  assert.equal(apk.targetSdkLabel, 'Android 15 (VANILLA_ICE_CREAM)');
 });
 
 test('parseXmlPlist extracts IPA bundle metadata', () => {
@@ -134,6 +193,9 @@ test('inspects a real binary-manifest APK from bundled resources', async () => {
   assert.equal(info.versionName, '7.0');
   assert.equal(info.versionCode, '11');
   assert.equal(info.minSdk, '24');
+  assert.equal(info.minSdkLabel, 'Android 7.0 (NOUGAT)');
   assert.equal(info.targetSdk, '34');
+  assert.match(info.md5, /^[a-f0-9]{32}$/);
+  assert.match(info.sha1, /^[a-f0-9]{40}$/);
   assert.ok(info.permissions.includes('android.permission.INTERNET'));
 });

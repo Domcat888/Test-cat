@@ -5,6 +5,7 @@ document.body.dataset.platform = window.testCat?.platform || 'browser';
 
 const elements = {
   device: $('#log-device'), refresh: $('#log-refresh'), packageName: $('#log-package'), foreground: $('#log-foreground'),
+  scope: $('#log-scope'),
   clearDevice: $('#log-clear-device'), start: $('#log-start'), stop: $('#log-stop'), keyword: $('#log-keyword'),
   interfaceName: $('#log-interface'), playerId: $('#log-player'), level: $('#log-level'), follow: $('#log-follow'),
   pause: $('#log-pause'), clearView: $('#log-clear-view'), list: $('#log-list'), empty: $('#log-empty'), issueList: $('#issue-list'),
@@ -25,6 +26,7 @@ let activeKind = 'all';
 let streaming = false;
 let paused = false;
 let renderTimer = null;
+let currentLogScope = 'device';
 
 function escapeHtml(value = '') {
   return String(value).replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
@@ -41,8 +43,16 @@ function filterTerms() {
   return [elements.keyword.value, elements.interfaceName.value, elements.playerId.value].map((value) => value.trim()).filter(Boolean);
 }
 
+function activeLogScope() {
+  return elements.scope.value === 'app' ? 'app' : 'device';
+}
+
+function activePackageName() {
+  return activeLogScope() === 'app' ? elements.packageName.value.trim() : '';
+}
+
 function packageMatches(record) {
-  const packageName = elements.packageName.value.trim().toLowerCase();
+  const packageName = activePackageName().toLowerCase();
   if (!packageName) return true;
   return record.processName?.toLowerCase().startsWith(packageName)
     || record.raw.toLowerCase().includes(packageName);
@@ -134,7 +144,7 @@ function render() {
     </div>`).join('');
   elements.displayNote.textContent = filtered.length > MAX_RENDER_ROWS
     ? `为保证流畅，页面展示最后 ${MAX_RENDER_ROWS.toLocaleString('zh-CN')} 条；导出仍包含全部筛选结果。`
-    : streaming ? '日志正在实时更新，筛选条件可以随时调整。' : records.length ? '监听已停止，仍可筛选和导出本次日志。' : '连接设备并点击“开始监听”，日志会实时出现在这里。';
+    : streaming ? `${currentLogScope === 'app' ? 'App 日志' : '整机日志'}正在实时更新，关键字和级别筛选可以随时调整。` : records.length ? '监听已停止，仍可筛选、复制和导出本次日志。' : '连接设备并点击“开始监听”，日志会实时出现在这里。';
   elements.exportButton.disabled = records.length === 0;
   elements.copyButton.disabled = filtered.length === 0;
   renderIssues();
@@ -152,11 +162,25 @@ function setStreaming(value, message = '') {
   elements.stop.disabled = !streaming;
   elements.device.disabled = streaming;
   elements.refresh.disabled = streaming;
+  elements.scope.disabled = streaming;
+  elements.packageName.disabled = streaming || activeLogScope() !== 'app';
+  elements.foreground.disabled = streaming || activeLogScope() !== 'app';
   elements.streamBadge.textContent = streaming ? '实时监听中' : '未监听';
   elements.streamBadge.classList.toggle('streaming', streaming);
   elements.titleStatus.classList.toggle('streaming', streaming);
   elements.titleStatus.classList.remove('error');
   elements.titleStatusText.textContent = message || (streaming ? '正在接收实时日志' : '日志监听已停止');
+}
+
+function syncScopeControls() {
+  const isApp = activeLogScope() === 'app';
+  elements.packageName.disabled = streaming || !isApp;
+  elements.foreground.disabled = streaming || !isApp;
+  elements.packageName.placeholder = isApp ? '例如 com.demo.game' : '整机日志模式不需要包名';
+  if (!isApp) elements.packageName.classList.add('muted-input');
+  else elements.packageName.classList.remove('muted-input');
+  if (!streaming) elements.titleStatusText.textContent = isApp ? '指定 App 日志模式，请填写包名或读取前台 App' : '整机日志模式，会接收设备全部 logcat';
+  scheduleRender();
 }
 
 async function refreshDevices() {
@@ -184,6 +208,9 @@ async function refreshDevices() {
 async function startListening() {
   const serial = elements.device.value;
   if (!serial || !api) return;
+  const logScope = activeLogScope();
+  const packageName = activePackageName();
+  if (logScope === 'app' && !packageName) return toast('指定 App 日志模式下，请先填写包名或读取前台 App');
   records = [];
   issues = [];
   issueKeys.clear();
@@ -191,7 +218,8 @@ async function startListening() {
   elements.start.disabled = true;
   elements.titleStatusText.textContent = '正在启动 logcat…';
   try {
-    await api.start({ serial, packageName: elements.packageName.value.trim(), clearBeforeStart: elements.clearDevice.checked });
+    await api.start({ serial, logScope, packageName, clearBeforeStart: elements.clearDevice.checked });
+    currentLogScope = logScope;
     setStreaming(true);
   } catch (error) {
     setStreaming(false);
@@ -209,6 +237,8 @@ async function stopListening() {
 
 async function readForegroundApp() {
   if (!elements.device.value || !api) return toast('请先选择 Android 设备');
+  elements.scope.value = 'app';
+  syncScopeControls();
   elements.foreground.disabled = true;
   try {
     const packageName = await api.getForegroundApp(elements.device.value);
@@ -230,7 +260,7 @@ async function exportLogs() {
     const result = await api.exportLogs({
       scope,
       format: elements.exportFormat.value,
-      filter: { packageName: elements.packageName.value.trim(), minimumLevel: elements.level.value, kind: activeKind, terms: filterTerms() }
+      filter: { logScope: activeLogScope(), packageName: activePackageName(), minimumLevel: elements.level.value, kind: activeKind, terms: filterTerms() }
     });
     if (!result.canceled) toast(`已导出 ${result.count.toLocaleString('zh-CN')} 条日志`);
   } catch (error) {
@@ -245,6 +275,7 @@ elements.device.addEventListener('change', () => { elements.start.disabled = str
 elements.start.addEventListener('click', startListening);
 elements.stop.addEventListener('click', stopListening);
 elements.foreground.addEventListener('click', readForegroundApp);
+elements.scope.addEventListener('change', syncScopeControls);
 elements.clearView.addEventListener('click', async () => {
   try { await api?.clear(); } catch {}
   records = []; issues = []; issueKeys.clear(); render(); toast('本次已采集日志已清空');
@@ -291,7 +322,10 @@ if (api) {
     scheduleRender();
   });
   api.onStatus((status) => {
-    if (status.phase === 'streaming') setStreaming(true, status.message);
+    if (status.phase === 'streaming') {
+      currentLogScope = status.logScope === 'app' ? 'app' : 'device';
+      setStreaming(true, status.message);
+    }
     else if (status.phase === 'error') {
       setStreaming(false);
       elements.titleStatus.classList.add('error');
@@ -299,6 +333,7 @@ if (api) {
       toast(status.message);
     } else if (status.phase === 'idle') setStreaming(false, status.message);
   });
+  syncScopeControls();
   refreshDevices();
 } else {
   elements.titleStatus.classList.add('error');

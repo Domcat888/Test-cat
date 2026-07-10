@@ -38,8 +38,19 @@ function setStatus(text, phase = '') {
   node.querySelector('span').textContent = text;
 }
 
-function field(label, value) {
-  return '<div class="info-card"><span>' + escapeHtml(label) + '</span><strong title="' + escapeHtml(value || '—') + '">' + escapeHtml(value || '—') + '</strong></div>';
+function field(label, value, className = '') {
+  return '<div class="info-card ' + escapeHtml(className) + '"><span>' + escapeHtml(label) + '</span><strong title="' + escapeHtml(value || '—') + '">' + escapeHtml(value || '—') + '</strong></div>';
+}
+
+function upperHash(value) {
+  return value ? String(value).toUpperCase() : '';
+}
+
+function certificateMd5(info) {
+  const values = (info.signature?.certificates || []).map((item) => upperHash(item.md5)).filter(Boolean);
+  if (values.length) return values.join(' / ');
+  if (info.signature?.signed) return '已签名，但当前安装包未包含可直接读取的 v1 证书 MD5';
+  return '';
 }
 
 function displayPackagePath(info) {
@@ -57,21 +68,26 @@ function renderPackage(info) {
       '<div><span>版本</span><strong>' + escapeHtml(info.versionName || '—') + '</strong></div>' +
       '<div><span>versionCode / Build</span><strong>' + escapeHtml(info.versionCode || '—') + '</strong></div>' +
       '<div><span>文件大小</span><strong>' + escapeHtml(info.fileSizeText || '—') + '</strong></div>' +
+      '<div><span>文件 MD5</span><strong title="' + escapeHtml(upperHash(info.md5)) + '">' + escapeHtml(upperHash(info.md5) || '—') + '</strong></div>' +
     '</div>';
 
   $('#info-grid').innerHTML = [
     field('文件名', info.fileName),
+    field('文件大小', info.fileSizeText),
+    field('文件 MD5', upperHash(info.md5), 'hash-card'),
+    field('文件 SHA1', upperHash(info.sha1), 'hash-card'),
+    field('文件 SHA256', upperHash(info.sha256), 'hash-card'),
     field('包类型', info.type.toUpperCase()),
     field('应用名', info.appName),
     field('包名 / Bundle ID', info.packageName),
     field('版本名', info.versionName),
-    field('版本号', info.versionCode),
-    field(info.type === 'apk' ? 'minSdk' : '最低 iOS', info.minSdk),
-    field('targetSdk', info.targetSdk),
+    field('内部版本号 / versionCode', info.versionCode),
+    field(info.type === 'apk' ? 'Min SDK' : '最低 iOS', info.type === 'apk' ? (info.minSdkLabel || info.minSdk) : info.minSdk),
+    field('Target SDK', info.targetSdkLabel || info.targetSdk),
     field('Debuggable', info.debuggable ? '是' : '否'),
     field('签名状态', info.signature?.signed ? '已签名' : '未识别签名'),
     field('签名方案', (info.signature?.schemes || []).join('、')),
-    field('SHA256', info.sha256)
+    field('证书 MD5', certificateMd5(info), 'hash-card')
   ].join('');
 
   const permissions = info.permissions || [];
@@ -226,8 +242,10 @@ async function runInstalledAction(name, action) {
     setStatus('正在' + name, 'working');
     const results = await action(serial, packageName);
     renderResults(results);
-    setStatus(name + '完成', results.every((item) => item.ok) ? 'done' : 'error');
-    if (results.every((item) => item.ok) && name === '卸载') {
+    const allOk = results.every((item) => item.ok);
+    setStatus(allOk ? name + '完成' : name + '失败', allOk ? 'done' : 'error');
+    if (!allOk) toast(results.find((item) => !item.ok)?.message || (name + '失败'));
+    if (allOk && name === '卸载') {
       state.installedPackages = state.installedPackages.filter((item) => item.packageName !== packageName);
       state.selectedInstalled = '';
       renderInstalledPackages();
@@ -278,6 +296,7 @@ function compareRows(left, right) {
     ['versionCode', '版本号'],
     ['minSdk', '最低系统'],
     ['targetSdk', '目标系统'],
+    ['md5', '文件 MD5'],
     ['sha256', '文件 SHA256']
   ];
   return pairs.map(([key, label]) => ({

@@ -37,7 +37,7 @@
           <span>🐾</span>
           <p><b>保持专注</b><br />把常用测试工具放到一个地方。</p>
         </div>
-        <div class="version">Test cat · v0.8.4</div>
+        <div class="version">Test cat · v0.8.9</div>
       </aside>
 
       <main class="main">
@@ -103,6 +103,7 @@
                 <option value="high">高优先</option>
                 <option value="low">低优先</option>
               </select>
+              <input id="todo-due" type="datetime-local" aria-label="提醒时间" title="设置任务时间后，会在还差 30 / 10 / 5 分钟时通过桌面宠物提醒" />
               <button class="primary-button" type="submit"><span>＋</span> 添加任务</button>
             </form>
 
@@ -260,7 +261,7 @@
           <div class="settings-card about-card">
             <div class="about-product">
               <img src="../../assets/icon.png" alt="" />
-              <div><h2>Test cat</h2><p>跨平台测试工具工作台 · 版本 0.8.4</p></div>
+              <div><h2>Test cat</h2><p>跨平台测试工具工作台 · 版本 0.8.9</p></div>
             </div>
             <div class="project-meta-panel">
               <h3>项目信息</h3>
@@ -282,17 +283,13 @@
             <div class="changelog-panel">
               <h3>更新日志</h3>
               <article class="changelog-entry latest">
-                <div><strong>v0.8.4</strong><time>2026-07-08</time><span>当前版本</span></div>
+                <div><strong>v0.8.9</strong><time>2026-07-10</time><span>当前版本</span></div>
                 <ul>
-                  <li>新增紫色护眼主题，支持浅色、深色和紫色护眼三种风格切换。</li>
-                  <li>截图与录屏总开关已生效：关闭后不响应快捷键，也不能从设置页启动采集。</li>
-                  <li>优化录屏稳定性，降低偶现只录到 1 秒的概率；录屏优先保存 MP4，不支持时自动回退 WebM。</li>
-                  <li>首页 TodoList 按优先级自动排序，未完成和高优先级任务会排在更前面。</li>
-                  <li>新增时间戳转换工具，支持秒、毫秒、微秒、纳秒时间戳和日期时间互转。</li>
-                  <li>新增公式运算工具，支持自定义变量词、公式模板、代入计算、历史记录和公式/变量词导入导出。</li>
-                  <li>公式运算默认页优化为空状态，输入框统一补充“例如”提示，打开后更清爽。</li>
-                  <li>公式运算变量词交互优化：不再显示固定快捷词，新生成或导入的变量词可记录、点击插入和一键删除。</li>
-                  <li>紫色护眼主题同步到主界面、计算器和手机投屏窗口。</li>
+                  <li>测试待办新增闹钟提醒时间。</li>
+                  <li>任务会在还差 30 分钟、10 分钟、5 分钟时通过桌面宠物提醒。</li>
+                  <li>宠物开启时正常提醒；宠物关闭时临时出现，提醒完成后自动回窝。</li>
+                  <li>待办列表新增闹钟时间和剩余时间显示。</li>
+                  <li>提醒记录会写入待办数据，避免同一节点重复提醒。</li>
                 </ul>
               </article>
             </div>

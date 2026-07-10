@@ -62,6 +62,45 @@ function classifyAdbFailure(error, fallback = 'ADB 操作失败') {
   return { code: 'adb-error', message: raw.trim() || fallback, raw };
 }
 
+function classifyClearDataFailure(error) {
+  const raw = String(error?.stdout || error?.stderr || error?.message || error || '');
+  const rules = [
+    [
+      /CLEAR_APP_USER_DATA|does not have permission .*clear data|SecurityException[\s\S]*clear data/i,
+      'clear-data-permission-denied',
+      '清除数据失败：当前设备系统禁止 ADB 清除该应用数据。请在手机「设置 → 应用 → 存储」里手动清除，或先卸载应用后重新安装；如果是测试机/企业管控设备，需要放开 USB 调试清数据权限。'
+    ],
+    [
+      /run-as: package not debuggable|Package .* is not debuggable|run-as:.*not debuggable/i,
+      'run-as-not-debuggable',
+      '清除数据失败：设备禁止标准清数据，且该应用不是 debuggable 包，无法使用 run-as 兜底清理。请手动清除数据，或卸载后重新安装。'
+    ],
+    [
+      /Unknown package|not installed|Unable to find package|Can't find package/i,
+      'package-not-found',
+      '清除数据失败：设备上未找到该包名，请重新读取已安装应用列表。'
+    ],
+    [
+      /device unauthorized|unauthorized/i,
+      'unauthorized',
+      '设备未授权：请在手机上允许 USB 调试。'
+    ],
+    [
+      /device offline|offline/i,
+      'offline',
+      '设备离线：请重新连接数据线或重启 ADB。'
+    ],
+    [
+      /no devices|device .* not found|more than one device/i,
+      'device-missing',
+      '没有找到目标设备，请确认设备已连接并选择正确设备。'
+    ]
+  ];
+  const matched = rules.find(([pattern]) => pattern.test(raw));
+  if (matched) return { code: matched[1], message: matched[2], raw };
+  return classifyAdbFailure(error, '清除数据失败');
+}
+
 function classifyInstallFailure(error) {
   const raw = String(error?.stdout || error?.stderr || error?.message || error || '');
   const rules = [
@@ -83,6 +122,12 @@ function classifyInstallFailure(error) {
   const matched = rules.find(([pattern]) => pattern.test(raw));
   if (matched) return { code: matched[1], message: matched[2], raw };
   return { code: 'unknown', message: raw.trim() || '安装失败：ADB 未返回明确原因。', raw };
+}
+
+function assertSafeAndroidPackageName(packageName) {
+  const safe = String(packageName || '').trim();
+  if (!/^[A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+$/.test(safe)) throw new Error('包名格式不正确，已取消清除数据操作。');
+  return safe;
 }
 
 function readZipEntries(buffer) {
@@ -255,6 +300,34 @@ function hasApkSigningBlock(buffer, centralOffset) {
   return buffer.subarray(centralOffset - 16, centralOffset).toString('utf8') === 'APK Sig Block 42';
 }
 
+function hashHex(buffer, algorithm) {
+  return crypto.createHash(algorithm).update(buffer).digest('hex');
+}
+
+function formatAndroidSdkVersion(value) {
+  const sdk = Number.parseInt(value, 10);
+  if (!Number.isFinite(sdk)) return String(value || '');
+  const names = {
+    21: 'Android 5.0 (LOLLIPOP)',
+    22: 'Android 5.1 (LOLLIPOP_MR1)',
+    23: 'Android 6.0 (MARSHMALLOW)',
+    24: 'Android 7.0 (NOUGAT)',
+    25: 'Android 7.1 (NOUGAT_MR1)',
+    26: 'Android 8.0 (OREO)',
+    27: 'Android 8.1 (OREO_MR1)',
+    28: 'Android 9 (PIE)',
+    29: 'Android 10 (Q)',
+    30: 'Android 11 (R)',
+    31: 'Android 12 (S)',
+    32: 'Android 12L (S_V2)',
+    33: 'Android 13 (TIRAMISU)',
+    34: 'Android 14 (UPSIDE_DOWN_CAKE)',
+    35: 'Android 15 (VANILLA_ICE_CREAM)',
+    36: 'Android 16'
+  };
+  return names[sdk] || `Android API ${sdk}`;
+}
+
 function parseApkInfo(buffer, filePath, zip) {
   const manifestEntry = findZipEntry(zip.entries, 'AndroidManifest.xml');
   if (!manifestEntry) throw new Error('APK 中没有 AndroidManifest.xml');
@@ -262,20 +335,26 @@ function parseApkInfo(buffer, filePath, zip) {
   const certEntries = zip.entries.filter((entry) => /^META-INF\/[^/]+\.(RSA|DSA|EC)$/i.test(entry.name));
   const certs = certEntries.map((entry) => {
     const data = readZipEntry(buffer, entry);
-    return { name: entry.name, sha256: crypto.createHash('sha256').update(data).digest('hex') };
+    return { name: entry.name, md5: hashHex(data, 'md5'), sha1: hashHex(data, 'sha1'), sha256: hashHex(data, 'sha256') };
   });
+  const minSdk = manifest.minSdk || '';
+  const targetSdk = manifest.targetSdk || '';
   return {
     type: 'apk',
     filePath,
     fileName: path.basename(filePath),
     fileSize: buffer.length,
-    sha256: crypto.createHash('sha256').update(buffer).digest('hex'),
+    md5: hashHex(buffer, 'md5'),
+    sha1: hashHex(buffer, 'sha1'),
+    sha256: hashHex(buffer, 'sha256'),
     packageName: manifest.packageName || '',
     appName: manifest.appLabel || '',
     versionName: manifest.versionName || '',
     versionCode: manifest.versionCode || '',
-    minSdk: manifest.minSdk || '',
-    targetSdk: manifest.targetSdk || '',
+    minSdk,
+    minSdkLabel: minSdk ? formatAndroidSdkVersion(minSdk) : '',
+    targetSdk,
+    targetSdkLabel: targetSdk ? formatAndroidSdkVersion(targetSdk) : '',
     debuggable: manifest.debuggable === 'true',
     permissions: manifest.usesPermissions || [],
     signature: {
@@ -397,7 +476,9 @@ function parseIpaInfo(buffer, filePath, zip) {
     filePath,
     fileName: path.basename(filePath),
     fileSize: buffer.length,
-    sha256: crypto.createHash('sha256').update(buffer).digest('hex'),
+    md5: hashHex(buffer, 'md5'),
+    sha1: hashHex(buffer, 'sha1'),
+    sha256: hashHex(buffer, 'sha256'),
     packageName: plist.CFBundleIdentifier || '',
     appName: plist.CFBundleDisplayName || plist.CFBundleName || '',
     versionName: plist.CFBundleShortVersionString || '',
@@ -429,6 +510,7 @@ function comparePackages(left, right) {
     ['versionCode', '版本号'],
     ['minSdk', '最低系统'],
     ['targetSdk', '目标系统'],
+    ['md5', '文件 MD5'],
     ['sha256', '文件 SHA256']
   ];
   return keys.map(([key, label]) => ({
@@ -560,7 +642,7 @@ class AppPackageService {
     }
   }
 
-  async runForDevices(serials, action) {
+  async runForDevices(serials, action, classifyFailure = classifyInstallFailure) {
     const devices = Array.isArray(serials) ? serials.filter(Boolean) : [];
     if (!devices.length) throw new Error('请选择至少一台 Android 设备');
     return Promise.all(devices.map(async (serial) => {
@@ -568,7 +650,7 @@ class AppPackageService {
         const output = await action(serial);
         return { serial, ok: true, output: String(output || '').trim() };
       } catch (error) {
-        const failure = error.installFailure || classifyInstallFailure(error);
+        const failure = classifyFailure(error);
         return { serial, ok: false, code: failure.code, message: failure.message, raw: failure.raw };
       }
     }));
@@ -585,17 +667,55 @@ class AppPackageService {
       const output = await this.adb(['-s', serial, 'install', ...options, filePath], 180000);
       if (!/Success/i.test(output)) throw Object.assign(new Error(output || 'ADB install failed'), { stdout: output });
       return output;
-    });
+    }, classifyInstallFailure);
   }
 
   async uninstallPackage({ serials, packageName, keepData = false } = {}) {
     if (!packageName) throw new Error('缺少应用包名');
-    return this.runForDevices(serials, (serial) => this.adb(['-s', serial, 'uninstall', ...(keepData ? ['-k'] : []), packageName], 90000));
+    return this.runForDevices(serials, (serial) => this.adb(['-s', serial, 'uninstall', ...(keepData ? ['-k'] : []), packageName], 90000), classifyAdbFailure);
+  }
+
+  async clearDataForDevice(serial, packageName) {
+    const safePackage = assertSafeAndroidPackageName(packageName);
+    const attempts = [
+      ['shell', 'pm', 'clear', safePackage],
+      ['shell', 'pm', 'clear', '--user', '0', safePackage],
+      ['shell', 'cmd', 'package', 'clear', '--user', '0', safePackage]
+    ];
+    let firstError = null;
+    for (const args of attempts) {
+      try {
+        const output = await this.adb(['-s', serial, ...args], 60000);
+        if (/Success/i.test(output)) return '应用数据已清除';
+        const error = Object.assign(new Error(output || 'pm clear 未返回 Success'), { stdout: output });
+        firstError ||= error;
+      } catch (error) {
+        firstError ||= error;
+        const failure = classifyClearDataFailure(error);
+        if (failure.code === 'clear-data-permission-denied') break;
+      }
+    }
+
+    try {
+      await this.adb(['-s', serial, 'shell', 'am', 'force-stop', safePackage], 20000);
+    } catch {}
+
+    try {
+      await this.adb([
+        '-s', serial, 'shell', 'run-as', safePackage, 'sh', '-c',
+        'rm -rf cache/* code_cache/* files/* databases/* shared_prefs/* no_backup/* app_webview/*'
+      ], 60000);
+      await this.adb(['-s', serial, 'shell', 'am', 'force-stop', safePackage], 20000);
+      return '系统拦截了 pm clear，已使用 debuggable 包 run-as 兜底清理私有目录并停止应用';
+    } catch (fallbackError) {
+      if (firstError) throw firstError;
+      throw fallbackError;
+    }
   }
 
   async clearData({ serials, packageName } = {}) {
     if (!packageName) throw new Error('缺少应用包名');
-    return this.runForDevices(serials, (serial) => this.adb(['-s', serial, 'shell', 'pm', 'clear', packageName], 60000));
+    return this.runForDevices(serials, (serial) => this.clearDataForDevice(serial, packageName), classifyClearDataFailure);
   }
 }
 
@@ -603,9 +723,11 @@ module.exports = {
   AppPackageService,
   __test: {
     classifyInstallFailure,
+    classifyClearDataFailure,
     comparePackages,
     inspectPackageFile,
     parseAndroidManifestXml,
+    parseApkInfo,
     parseBinaryPlist,
     parseDeviceList,
     parseInstalledPackages,

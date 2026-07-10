@@ -18,7 +18,8 @@
         <section class="connection-panel">
           <label class="field device-field">Android 设备<select id="log-device"><option value="">正在查找设备…</option></select></label>
           <button class="button secondary" id="log-refresh">↻ 刷新设备</button>
-          <label class="field package-field">App 包名（选填）<input id="log-package" placeholder="留空监听全部进程" /></label>
+          <label class="field scope-field">日志范围<select id="log-scope"><option value="device">整机日志</option><option value="app">指定 App 日志</option></select></label>
+          <label class="field package-field">App 包名<input id="log-package" placeholder="指定 App 日志时填写" /></label>
           <button class="button secondary" id="log-foreground">读取前台 App</button>
           <label class="check"><input id="log-clear-device" type="checkbox" /><span>开始前清空旧日志</span></label>
           <button class="button primary" id="log-start" disabled>▶ 开始监听</button>
@@ -27,7 +28,7 @@
 
         <section class="filter-panel">
           <div class="filter-row">
-            <label class="search-box"><span>⌕</span><input id="log-keyword" placeholder="搜索关键字、error、接口路径…" /></label>
+            <label class="search-box"><span>⌕</span><input id="log-keyword" placeholder="过滤关键字、error、接口路径…" /></label>
             <label class="compact-field">接口名<input id="log-interface" placeholder="例如 /api/login" /></label>
             <label class="compact-field">玩家 ID<input id="log-player" placeholder="例如 1008611" /></label>
             <label class="compact-field level-field">最低级别<select id="log-level"><option value="all">全部</option><option value="V">Verbose</option><option value="D">Debug</option><option value="I">Info</option><option value="W">Warn</option><option value="E">Error</option><option value="F">Fatal</option></select></label>

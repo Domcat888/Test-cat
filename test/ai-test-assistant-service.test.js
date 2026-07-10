@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const { AiTestAssistantService, compactText, createXmindBuffer, parseMarkdownTable, rowsFromResult } = require('../src/ai-test-assistant-service');
+const { AiTestAssistantService, buildAssistantMessages, compactText, createXmindBuffer, parseMarkdownTable, rowsFromResult } = require('../src/ai-test-assistant-service');
 const { unzipEntries } = require('../src/file-compare-service');
 
 test('parses markdown table result into row objects', () => {
@@ -44,6 +44,22 @@ test('compacts requirement text safely', () => {
   const result = compactText(longText);
   assert.ok(result.length <= 220_000);
   assert.ok(!result.includes('\n\n\n\n'));
+});
+
+test('builds generic AI task messages with task context and output guide', () => {
+  const messages = buildAssistantMessages({
+    taskName: '报错解释',
+    prompt: '解释报错',
+    inputText: 'INSTALL_FAILED_VERSION_DOWNGRADE',
+    extraContext: '小白可读',
+    outputGuide: '输出原因和处理方案'
+  });
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].role, 'user');
+  assert.match(messages[0].content, /【任务】报错解释/);
+  assert.match(messages[0].content, /解释报错/);
+  assert.match(messages[0].content, /INSTALL_FAILED_VERSION_DOWNGRADE/);
+  assert.match(messages[0].content, /输出原因和处理方案/);
 });
 
 test('extracts direct image requirements as vision attachments', async () => {

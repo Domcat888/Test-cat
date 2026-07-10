@@ -23,7 +23,10 @@ const pageCopy = {
 };
 
 const TODO_PRIORITY_WEIGHT = { high: 0, normal: 1, low: 2 };
+const TODO_PRIORITY_LABEL = { high: '高优先', normal: '普通', low: '低优先' };
+const TODO_REMINDER_OFFSETS = [30, 10, 5];
 const THEMES = ['light', 'dark', 'purple'];
+const todoReminderTimers = new Map();
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -79,6 +82,118 @@ function sortedTodos(todos) {
     if (priorityDelta) return priorityDelta;
     return todoCreatedWeight(right) - todoCreatedWeight(left);
   });
+}
+
+function todoDateTimeInputValue(date = new Date()) {
+  const value = new Date(date.getTime() - date.getTimezoneOffset() * 60 * 1000);
+  return value.toISOString().slice(0, 16);
+}
+
+function normalizeTodoDueAt(value) {
+  const timestamp = Date.parse(value || '');
+  if (!Number.isFinite(timestamp)) return '';
+  return new Date(timestamp).toISOString();
+}
+
+function formatTodoDueAt(value) {
+  const timestamp = Date.parse(value || '');
+  if (!Number.isFinite(timestamp)) return '';
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit'
+  }).format(new Date(timestamp));
+}
+
+function todoDueState(todo) {
+  const dueTime = Date.parse(todo?.dueAt || '');
+  if (!Number.isFinite(dueTime)) return '';
+  const diffMs = dueTime - Date.now();
+  if (diffMs <= 0) return '已到时间';
+  const minutes = Math.ceil(diffMs / 60000);
+  if (minutes < 60) return `还差 ${minutes} 分钟`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  if (hours < 24) return `还差 ${hours} 小时${rest ? ` ${rest} 分钟` : ''}`;
+  const days = Math.floor(hours / 24);
+  return `还差 ${days} 天 ${hours % 24} 小时`;
+}
+
+function todoMetaHtml(todo) {
+  const parts = [];
+  if (todo.createdAt) parts.push(`创建 ${escapeHtml(todo.createdAt)}`);
+  if (todo.dueAt) {
+    const dueText = formatTodoDueAt(todo.dueAt);
+    const dueState = todoDueState(todo);
+    parts.push(`<b>闹钟 ${escapeHtml(dueText)}${dueState ? ` · ${escapeHtml(dueState)}` : ''}</b>`);
+  } else {
+    parts.push('未设置闹钟');
+  }
+  return parts.join(' · ');
+}
+
+function clearTodoReminderTimers() {
+  for (const timer of todoReminderTimers.values()) clearTimeout(timer);
+  todoReminderTimers.clear();
+}
+
+function markTodoReminderSent(todo, minutesLeft) {
+  const sent = new Set(Array.isArray(todo.remindedOffsets) ? todo.remindedOffsets.map(Number) : []);
+  sent.add(Number(minutesLeft));
+  todo.remindedOffsets = [...sent].filter(Number.isFinite).sort((left, right) => right - left);
+}
+
+async function sendTodoReminder(todoId, minutesLeft) {
+  const todo = state.todos.find((item) => item.id === todoId);
+  if (!todo || todo.done) return;
+  const dueTime = Date.parse(todo.dueAt || '');
+  if (!Number.isFinite(dueTime) || dueTime <= Date.now()) return;
+  const sent = new Set(Array.isArray(todo.remindedOffsets) ? todo.remindedOffsets.map(Number) : []);
+  if (sent.has(minutesLeft)) return;
+  markTodoReminderSent(todo, minutesLeft);
+  saveTodos();
+  renderTodos();
+  const dueText = formatTodoDueAt(todo.dueAt);
+  const priority = TODO_PRIORITY_LABEL[todo.priority] || TODO_PRIORITY_LABEL.normal;
+  const message = `任务「${todo.text}」还差 ${minutesLeft} 分钟到时间（${dueText}）。优先级：${priority}。`;
+  try {
+    await window.testCat?.companionPet?.remindTodo?.({
+      title: `待办提醒 · 还差 ${minutesLeft} 分钟`,
+      message,
+      todoText: todo.text,
+      minutesLeft,
+      dueAt: todo.dueAt,
+      priority: todo.priority
+    });
+  } catch (error) {
+    toast(error.message || message);
+  }
+}
+
+function scheduleTodoReminders() {
+  clearTodoReminderTimers();
+  const now = Date.now();
+  for (const todo of state.todos) {
+    if (todo.done || !todo.dueAt) continue;
+    const dueTime = Date.parse(todo.dueAt);
+    if (!Number.isFinite(dueTime) || dueTime <= now) continue;
+    const sent = new Set(Array.isArray(todo.remindedOffsets) ? todo.remindedOffsets.map(Number) : []);
+    for (const minutesLeft of TODO_REMINDER_OFFSETS) {
+      if (sent.has(minutesLeft)) continue;
+      const delay = dueTime - minutesLeft * 60 * 1000 - now;
+      if (delay < -60_000) continue;
+      if (delay > 2_147_483_647) continue;
+      const timerKey = `${todo.id}:${minutesLeft}`;
+      const timer = setTimeout(() => sendTodoReminder(todo.id, minutesLeft), Math.max(0, delay));
+      todoReminderTimers.set(timerKey, timer);
+    }
+  }
+}
+
+function updateTodoDueMin() {
+  const input = $('#todo-due');
+  if (input) input.min = todoDateTimeInputValue(new Date(Date.now() + 60_000));
 }
 
 function moduleCard(module, sortable = false) {
@@ -467,8 +582,8 @@ function renderTodos() {
         <input type="checkbox" data-todo-toggle="${escapeHtml(todo.id)}"${todo.done ? ' checked' : ''} />
         <span></span>
       </label>
-      <div class="todo-content"><strong>${escapeHtml(todo.text)}</strong><small>${escapeHtml(todo.createdAt || '')}</small></div>
-      <span class="todo-priority ${escapeHtml(todo.priority)}">${todo.priority === 'high' ? '高优先' : todo.priority === 'low' ? '低优先' : '普通'}</span>
+      <div class="todo-content"><strong>${escapeHtml(todo.text)}</strong><small>${todoMetaHtml(todo)}</small></div>
+      <span class="todo-priority ${escapeHtml(todo.priority)}">${escapeHtml(TODO_PRIORITY_LABEL[todo.priority] || TODO_PRIORITY_LABEL.normal)}</span>
       <button class="todo-delete" data-todo-delete="${escapeHtml(todo.id)}" aria-label="删除待办">×</button>
     </li>`).join('');
 
@@ -484,6 +599,7 @@ function renderTodos() {
     saveTodos();
     renderTodos();
   }));
+  scheduleTodoReminders();
 }
 
 function goTo(page) {
@@ -1012,17 +1128,28 @@ $$('[data-filter]').forEach((button) => button.addEventListener('click', () => {
 $('#todo-form').addEventListener('submit', (event) => {
   event.preventDefault();
   const input = $('#todo-input');
+  const dueInput = $('#todo-due');
   const text = input.value.trim();
   if (!text) return;
+  const dueAt = normalizeTodoDueAt(dueInput.value);
+  if (dueInput.value && (!dueAt || Date.parse(dueAt) <= Date.now())) {
+    toast('提醒时间需要晚于现在');
+    dueInput.focus();
+    return;
+  }
   state.todos.unshift({
     id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
     text: text.slice(0, 100),
     priority: $('#todo-priority').value,
     done: false,
+    dueAt,
+    remindedOffsets: [],
     createdAt: new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date())
   });
   saveTodos();
   input.value = '';
+  dueInput.value = '';
+  updateTodoDueMin();
   renderTodos();
   input.focus();
 });
@@ -1146,5 +1273,7 @@ setTheme(localStorage.getItem(THEME_KEY) || 'light');
 loadAiSettings();
 loadCaptureSettings();
 loadCompanionPetSettings();
+updateTodoDueMin();
+setInterval(updateTodoDueMin, 60_000);
 render();
 renderTodos();

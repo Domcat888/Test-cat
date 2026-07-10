@@ -38,6 +38,12 @@ test('combines package, level, issue type and keyword filters', () => {
   assert.equal(__test.recordMatchesFilter(record, { kind: 'crash' }), false);
 });
 
+test('device log scope ignores package while app scope applies package filter', () => {
+  const record = { level: 'I', kind: 'normal', processName: 'com.other.app', raw: '07-06 I Game: boot finished' };
+  assert.equal(__test.recordMatchesFilter(record, { logScope: 'device', packageName: 'com.example.game', terms: ['boot'] }), true);
+  assert.equal(__test.recordMatchesFilter(record, { logScope: 'app', packageName: 'com.example.game', terms: ['boot'] }), false);
+});
+
 test('streams log chunks in batches and clears the captured session safely', () => {
   const batches = [];
   const service = new LogAnalysisService({ dialog: {}, getWindow: () => null, onLogs: (records) => batches.push(records), onStatus: () => {} });
@@ -62,13 +68,14 @@ test('exports a visible HTML log report with escaped device content', async () =
     onStatus: () => {}
   });
   service.session = {
-    model: 'Pixel 8', serial: 'ABC123', packageName: 'com.example.game', startedAt: '2026-07-06T00:00:00.000Z',
+    model: 'Pixel 8', serial: 'ABC123', logScope: 'app', packageName: 'com.example.game', startedAt: '2026-07-06T00:00:00.000Z',
     records: [{ id: 1, time: '07-06 12:00:00.000', level: 'E', pid: '1234', processName: 'com.example.game', tag: 'Game', message: '<script>alert(1)</script>', raw: 'raw', kind: 'error' }]
   };
   const result = await service.exportLogs({ format: 'html' });
   const html = await fs.promises.readFile(output, 'utf8');
   assert.equal(result.count, 1);
   assert.match(html, /Test cat Android 日志报告/);
+  assert.match(html, /范围：指定 App 日志/);
   assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
   assert.doesNotMatch(html, /<script>alert/);
   await fs.promises.rm(directory, { recursive: true, force: true });

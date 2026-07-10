@@ -83,7 +83,8 @@ function safeFileName(value) {
 }
 
 function recordMatchesFilter(record, filter = {}) {
-  const packageName = String(filter.packageName || '').trim().toLowerCase();
+  const logScope = filter.logScope === 'app' ? 'app' : 'device';
+  const packageName = logScope === 'app' ? String(filter.packageName || '').trim().toLowerCase() : '';
   if (packageName && !String(record.processName || '').toLowerCase().startsWith(packageName) && !String(record.raw || '').toLowerCase().includes(packageName)) return false;
   const minimumLevel = Object.hasOwn(LEVEL_RANK, filter.minimumLevel) ? filter.minimumLevel : 'all';
   if (minimumLevel !== 'all' && (LEVEL_RANK[record.level] ?? -1) < LEVEL_RANK[minimumLevel]) return false;
@@ -186,11 +187,13 @@ class LogAnalysisService {
     for (const line of lines) this.addRecord(parseLogcatLine(line, this.processMap, this.nextId++));
   }
 
-  async start({ serial, packageName = '', clearBeforeStart = false } = {}) {
+  async start({ serial, packageName = '', logScope = 'device', clearBeforeStart = false } = {}) {
     const safeSerial = String(serial || '').trim();
-    const safePackage = String(packageName || '').trim();
+    const safeScope = logScope === 'app' ? 'app' : 'device';
+    const safePackage = safeScope === 'app' ? String(packageName || '').trim() : '';
     if (!safeSerial || safeSerial.length > 200) throw new Error('请选择要监听的 Android 设备。');
     if (safePackage && (!/^[a-zA-Z0-9_.:]+$/.test(safePackage) || safePackage.length > 180)) throw new Error('App 包名格式不正确。');
+    if (safeScope === 'app' && !safePackage) throw new Error('指定 App 日志模式下，请先填写包名或读取前台 App。');
     await this.stop(false);
     const devices = await this.listDevices();
     const device = devices.find((item) => item.serial === safeSerial);
@@ -205,6 +208,7 @@ class LogAnalysisService {
     this.session = {
       serial: safeSerial,
       model: device.model,
+      logScope: safeScope,
       packageName: safePackage,
       startedAt: new Date().toISOString(),
       records: [],
@@ -239,8 +243,9 @@ class LogAnalysisService {
       }
     });
     this.processMapTimer = setInterval(() => this.refreshProcessMap(), 5000);
-    this.emitStatus('streaming', `正在监听 ${device.model} 的实时日志`, { serial: safeSerial, packageName: safePackage });
-    return { serial: safeSerial, model: device.model, packageName: safePackage, startedAt: this.session.startedAt };
+    const scopeLabel = safeScope === 'app' ? `App 日志：${safePackage}` : '整机日志';
+    this.emitStatus('streaming', `正在监听 ${device.model} 的${scopeLabel}`, { serial: safeSerial, packageName: safePackage, logScope: safeScope });
+    return { serial: safeSerial, model: device.model, packageName: safePackage, logScope: safeScope, startedAt: this.session.startedAt };
   }
 
   async stop(announce = true) {
@@ -284,7 +289,8 @@ class LogAnalysisService {
     if (!source.length) throw new Error('当前筛选条件下没有可导出的日志。');
     const safeFormat = format === 'html' ? 'html' : 'log';
     const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
-    const packagePart = this.session?.packageName ? `-${safeFileName(this.session.packageName)}` : '';
+    const scopeLabel = this.session?.logScope === 'app' ? '指定 App 日志' : '整机日志';
+    const packagePart = this.session?.logScope === 'app' && this.session?.packageName ? `-${safeFileName(this.session.packageName)}` : '-device';
     const result = await this.dialog.showSaveDialog(this.getWindow(), {
       title: '导出 Android 日志',
       defaultPath: `Test-cat-logcat${packagePart}-${stamp}.${safeFormat}`,
@@ -300,9 +306,9 @@ class LogAnalysisService {
     let content;
     if (safeFormat === 'html') {
       const rows = source.map((item) => `<tr class="${htmlEscape(item.kind)}"><td>${htmlEscape(item.time)}</td><td>${htmlEscape(item.level)}</td><td>${htmlEscape(item.pid)}</td><td>${htmlEscape(item.processName)}</td><td>${htmlEscape(item.tag)}</td><td><pre>${htmlEscape(item.message)}</pre></td></tr>`).join('');
-      content = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>Test cat Android 日志报告</title><style>body{margin:28px;font:14px system-ui;color:#202938}h1{margin:0 0 8px}.meta{color:#667085}.stats{display:flex;gap:10px;margin:20px 0}.stats b{padding:8px 12px;border-radius:8px;background:#edf3ff}table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:7px;border:1px solid #d7deea;text-align:left;vertical-align:top}th{position:sticky;top:0;background:#eaf0fa}pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.45 ui-monospace,monospace}.crash,.anr{background:#ffe2e2}.exception,.error{background:#fff0e5}.warning{background:#fff9df}</style></head><body><h1>Test cat Android 日志报告</h1><p class="meta">设备：${htmlEscape(this.session?.model || '')}（${htmlEscape(this.session?.serial || '')}）　App：${htmlEscape(this.session?.packageName || '全部进程')}　导出时间：${htmlEscape(new Date().toLocaleString('zh-CN', { hour12: false }))}</p><div class="stats"><b>日志 ${source.length}</b><b>崩溃 ${summary.crash}</b><b>ANR ${summary.anr}</b><b>异常 ${summary.exception}</b><b>报错 ${summary.error}</b></div><table><thead><tr><th>时间</th><th>级别</th><th>PID</th><th>进程</th><th>标签</th><th>内容</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
+      content = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>Test cat Android 日志报告</title><style>body{margin:28px;font:14px system-ui;color:#202938}h1{margin:0 0 8px}.meta{color:#667085}.stats{display:flex;gap:10px;margin:20px 0}.stats b{padding:8px 12px;border-radius:8px;background:#edf3ff}table{width:100%;border-collapse:collapse;font-size:12px}th,td{padding:7px;border:1px solid #d7deea;text-align:left;vertical-align:top}th{position:sticky;top:0;background:#eaf0fa}pre{margin:0;white-space:pre-wrap;word-break:break-word;font:12px/1.45 ui-monospace,monospace}.crash,.anr{background:#ffe2e2}.exception,.error{background:#fff0e5}.warning{background:#fff9df}</style></head><body><h1>Test cat Android 日志报告</h1><p class="meta">设备：${htmlEscape(this.session?.model || '')}（${htmlEscape(this.session?.serial || '')}）　范围：${htmlEscape(scopeLabel)}　App：${htmlEscape(this.session?.packageName || '全部进程')}　导出时间：${htmlEscape(new Date().toLocaleString('zh-CN', { hour12: false }))}</p><div class="stats"><b>日志 ${source.length}</b><b>崩溃 ${summary.crash}</b><b>ANR ${summary.anr}</b><b>异常 ${summary.exception}</b><b>报错 ${summary.error}</b></div><table><thead><tr><th>时间</th><th>级别</th><th>PID</th><th>进程</th><th>标签</th><th>内容</th></tr></thead><tbody>${rows}</tbody></table></body></html>`;
     } else {
-      const header = [`# Test cat Android logcat`, `# 设备：${this.session?.model || ''}（${this.session?.serial || ''}）`, `# App：${this.session?.packageName || '全部进程'}`, `# 监听开始：${this.session?.startedAt || ''}`, `# 导出时间：${new Date().toISOString()}`, `# 日志数量：${source.length}，崩溃：${summary.crash}，ANR：${summary.anr}，异常：${summary.exception}，报错：${summary.error}`, ''].join('\n');
+      const header = [`# Test cat Android logcat`, `# 设备：${this.session?.model || ''}（${this.session?.serial || ''}）`, `# 范围：${scopeLabel}`, `# App：${this.session?.packageName || '全部进程'}`, `# 监听开始：${this.session?.startedAt || ''}`, `# 导出时间：${new Date().toISOString()}`, `# 日志数量：${source.length}，崩溃：${summary.crash}，ANR：${summary.anr}，异常：${summary.exception}，报错：${summary.error}`, ''].join('\n');
       content = header + source.map((item) => item.raw).join('\n');
     }
     await fs.promises.writeFile(result.filePath, content, 'utf8');

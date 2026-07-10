@@ -135,6 +135,38 @@ function endpointFromBaseUrl(baseUrl) {
   return normalized + '/chat/completions';
 }
 
+function buildAssistantMessages(payload = {}) {
+  const taskName = String(payload.taskName || 'AI 测试任务').trim().slice(0, 80) || 'AI 测试任务';
+  const prompt = String(payload.prompt || '').trim();
+  if (!prompt) throw new Error('请先填写 AI 执行提示词');
+  const inputText = compactText(payload.inputText ?? payload.requirementText ?? '');
+  const extraContext = String(payload.extraContext ?? payload.extraConditions ?? '').trim();
+  const outputGuide = String(payload.outputGuide || '').trim();
+  const imageContent = normalizeImagePayloads(payload.images);
+  if (!inputText && !imageContent.length) throw new Error('请先输入或导入要处理的内容');
+  const userText = [
+    `【任务】${taskName}`,
+    '',
+    '【执行提示词】',
+    prompt,
+    '',
+    '【补充说明】',
+    extraContext || '无',
+    '',
+    imageContent.length ? `【图片附件】本次随请求附带 ${imageContent.length} 张图片；如果模型支持视觉，请结合图片内容。` : '',
+    imageContent.length ? '' : '',
+    '【输入内容】',
+    inputText || '内容主要来自图片附件，请先理解图片内容。',
+    outputGuide ? '' : '',
+    outputGuide ? '【输出格式要求】' : '',
+    outputGuide
+  ].filter((line) => line !== '').join('\n');
+  return [{
+    role: 'user',
+    content: imageContent.length ? [{ type: 'text', text: userText }, ...imageContent] : userText
+  }];
+}
+
 function parseMarkdownTable(text) {
   const lines = String(text || '').split(/\r?\n/);
   for (let index = 0; index < lines.length - 1; index += 1) {
@@ -306,7 +338,7 @@ function createZip(files) {
 function createXmindBuffer(rows, title) {
   const content = JSON.stringify(xmindContent(rows, title), null, 2);
   const metadata = JSON.stringify({
-    creator: { name: 'Test cat', version: '0.8.4' },
+    creator: { name: 'Test cat', version: '0.8.9' },
     activeSheetId: JSON.parse(content)[0]?.id
   }, null, 2);
   const manifest = JSON.stringify({
@@ -396,33 +428,29 @@ class AiTestAssistantService {
   }
 
   async generateTestCases(payload = {}) {
+    const prompt = String(payload.prompt || '').trim();
+    if (!prompt) throw new Error('请先填写测试用例生成提示词');
+    const requirementText = String(payload.requirementText || '').trim();
+    const imageContent = normalizeImagePayloads(payload.images);
+    if (!requirementText && !imageContent.length) throw new Error('请先输入或导入需求内容');
+    return this.runTask({
+      taskName: '测试用例生成',
+      prompt,
+      inputText: requirementText,
+      extraContext: String(payload.extraConditions || '').trim() || '无',
+      images: payload.images,
+      outputGuide: '优先输出 Markdown 表格，字段建议包含：模块、用例标题、前置条件、操作步骤、预期结果、优先级、备注。'
+    });
+  }
+
+  async runTask(payload = {}) {
     const settings = this.getSettings?.() || {};
     if (settings.enabled === false) throw new Error('AI 功能已关闭，请先在设置里开启');
     const apiKey = String(settings.apiKey || '').trim();
     const model = String(settings.model || '').trim();
     if (!apiKey) throw new Error('请先在设置里填写 AI API Key');
     if (!model) throw new Error('请先在设置里填写 AI Model');
-    const prompt = String(payload.prompt || '').trim();
-    if (!prompt) throw new Error('请先填写测试用例生成提示词');
-    const requirementText = String(payload.requirementText || '').trim();
-    const imageContent = normalizeImagePayloads(payload.images);
-    if (!requirementText && !imageContent.length) throw new Error('请先输入或导入需求内容');
-    const userText = [
-      '【测试用例生成提示词】',
-      prompt,
-      '',
-      '【附加条件】',
-      String(payload.extraConditions || '').trim() || '无',
-      '',
-      imageContent.length ? `【图片附件】本次随请求附带 ${imageContent.length} 张需求图片；如果模型支持视觉，请结合图片内容。` : '',
-      imageContent.length ? '' : '',
-      '【需求内容】',
-      requirementText || '需求主要来自图片附件，请先理解图片内容。'
-    ].filter((line) => line !== '').join('\n');
-    const messages = [{
-      role: 'user',
-      content: imageContent.length ? [{ type: 'text', text: userText }, ...imageContent] : userText
-    }];
+    const messages = buildAssistantMessages(payload);
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 90_000);
     try {
@@ -448,7 +476,7 @@ class AiTestAssistantService {
       }
       const content = data?.choices?.[0]?.message?.content || data?.choices?.[0]?.text || '';
       if (!content.trim()) throw new Error('AI 没有返回内容');
-      return { content: content.trim(), usage: data?.usage || null };
+      return { content: content.trim(), usage: data?.usage || null, taskName: String(payload.taskName || '').trim() };
     } catch (error) {
       if (error.name === 'AbortError') throw new Error('AI 请求超时，请检查网络或模型服务');
       throw error;
@@ -504,15 +532,17 @@ class AiTestAssistantService {
 
   async exportExcel(payload = {}) {
     const rows = rowsFromResult(payload.content || '');
-    const defaultPath = sanitizeFileName(payload.title || 'AI测试用例') + '.xls';
+    const exportTitle = sanitizeFileName(payload.title || 'AI结果', 'AI结果');
+    const sheetName = sanitizeFileName(payload.sheetName || payload.title || 'AI结果', 'AI结果').replace(/[&']/g, '-').slice(0, 28);
+    const defaultPath = exportTitle + '.xls';
     const result = await this.dialog.showSaveDialog(this.getWindow?.(), {
-      title: '导出测试用例 Excel',
+      title: '导出 AI 结果 Excel',
       defaultPath,
       filters: [{ name: 'Excel 工作簿', extensions: ['xls'] }]
     });
     if (result.canceled || !result.filePath) return null;
-    const excelXml = createSpreadsheetXml(rows, 'AI 测试用例')
-      .replace('<Worksheet ss:Name="差异报告">', '<Worksheet ss:Name="AI测试用例">');
+    const excelXml = createSpreadsheetXml(rows, sheetName)
+      .replace('<Worksheet ss:Name="差异报告">', `<Worksheet ss:Name="${sheetName}">`);
     await fs.promises.writeFile(result.filePath, '\ufeff' + excelXml, 'utf8');
     return { filePath: result.filePath, rows: rows.length };
   }
@@ -533,6 +563,7 @@ class AiTestAssistantService {
 
 module.exports = {
   AiTestAssistantService,
+  buildAssistantMessages,
   compactText,
   createXmindBuffer,
   parseMarkdownTable,

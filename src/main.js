@@ -1328,6 +1328,21 @@ function scheduleCompanionPetMovement() {
   companionPetWalkTimer.unref?.();
 }
 
+function deliverCompanionPetReminder(targetWindow, reminder) {
+  if (!targetWindow || targetWindow.isDestroyed()) return;
+  const payload = { ...reminder, at: Date.now() };
+  const send = () => {
+    if (targetWindow && !targetWindow.isDestroyed()) {
+      targetWindow.webContents.send('companion-pet:reminder', payload);
+    }
+  };
+  if (targetWindow.webContents.isLoading()) {
+    targetWindow.webContents.once('did-finish-load', () => setTimeout(send, 80));
+  } else {
+    send();
+  }
+}
+
 function sendCompanionPetReminder(type) {
   if (!companionPetSettings?.enabled) return;
   const activePet = COMPANION_PETS[companionPetSettings.activePetId] || COMPANION_PETS[DEFAULT_COMPANION_PET_SETTINGS.activePetId];
@@ -1353,7 +1368,38 @@ function sendCompanionPetReminder(type) {
   if (!reminder) return;
   const targetWindow = companionPetWindow && !companionPetWindow.isDestroyed() ? companionPetWindow : createCompanionPetWindow();
   showCompanionPetWindow(targetWindow);
-  targetWindow.webContents.send('companion-pet:reminder', { ...reminder, at: Date.now() });
+  deliverCompanionPetReminder(targetWindow, reminder);
+}
+
+function sendTodoCompanionPetReminder(payload = {}) {
+  const settings = companionPetSettings || { ...DEFAULT_COMPANION_PET_SETTINGS };
+  const wasEnabled = settings.enabled !== false;
+  const activePet = COMPANION_PETS[settings.activePetId] || COMPANION_PETS[DEFAULT_COMPANION_PET_SETTINGS.activePetId];
+  const petName = activePet.name || '陪伴宠物';
+  const minutesLeft = Number(payload.minutesLeft);
+  const safeMinutes = Number.isFinite(minutesLeft) && minutesLeft > 0 ? Math.round(minutesLeft) : 0;
+  const todoText = String(payload.todoText || '').trim().slice(0, 120);
+  const title = String(payload.title || (safeMinutes ? `待办提醒 · 还差 ${safeMinutes} 分钟` : '待办提醒')).trim().slice(0, 80);
+  const message = String(payload.message || (todoText ? `${petName}提醒你：任务「${todoText}」快到时间啦。` : `${petName}提醒你：有测试任务快到时间啦。`)).trim().slice(0, 260);
+  const targetWindow = companionPetWindow && !companionPetWindow.isDestroyed() ? companionPetWindow : createCompanionPetWindow();
+  showCompanionPetWindow(targetWindow);
+  deliverCompanionPetReminder(targetWindow, {
+    type: 'todo',
+    title,
+    message,
+    minutesLeft: safeMinutes,
+    todoText,
+    temporary: !wasEnabled
+  });
+  if (!wasEnabled) {
+    const hideTimer = setTimeout(() => {
+      if (!companionPetSettings?.enabled && companionPetWindow === targetWindow && targetWindow && !targetWindow.isDestroyed()) {
+        targetWindow.close();
+      }
+    }, 12_000);
+    hideTimer.unref?.();
+  }
+  return { ok: true, temporary: !wasEnabled };
 }
 
 function scheduleCompanionPetReminders() {
@@ -1547,6 +1593,7 @@ function setupIpc() {
   ipcMain.handle('ai-test-assistant:test-connection', () => aiTestAssistantService.testConnection());
   ipcMain.handle('ai-test-assistant:select-requirement-file', () => aiTestAssistantService.selectRequirementFile());
   ipcMain.handle('ai-test-assistant:extract-requirement-file', (_event, filePath) => aiTestAssistantService.extractRequirementFile(filePath));
+  ipcMain.handle('ai-test-assistant:run-task', (_event, payload = {}) => aiTestAssistantService.runTask(payload));
   ipcMain.handle('ai-test-assistant:generate-test-cases', (_event, payload = {}) => aiTestAssistantService.generateTestCases(payload));
   ipcMain.handle('ai-test-assistant:export-excel', (_event, payload = {}) => aiTestAssistantService.exportExcel(payload));
   ipcMain.handle('ai-test-assistant:export-xmind', (_event, payload = {}) => aiTestAssistantService.exportXmind(payload));
@@ -1624,6 +1671,7 @@ function setupIpc() {
     moveCompanionPet(false, true);
     return true;
   });
+  ipcMain.handle('companion-pet:todo-reminder', (_event, payload = {}) => sendTodoCompanionPetReminder(payload));
   ipcMain.handle('companion-pet:drag-start', (_event, point) => startCompanionPetDrag(point || {}));
   ipcMain.handle('companion-pet:drag-move', (_event, point) => dragCompanionPet(point || {}));
   ipcMain.handle('companion-pet:drag-end', () => endCompanionPetDrag());
