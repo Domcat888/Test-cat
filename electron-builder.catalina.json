@@ -11,8 +11,29 @@
     "src/**/*",
     "assets/**/*",
     "resources/**/*",
+    "!resources/ios-performance-runtime/**/*",
+    "!resources/platform-tools/**/*",
     "CHANGELOG.md",
     "package.json"
+  ],
+  "asarUnpack": [
+    "src/ios-performance-helper.py"
+  ],
+  "extraResources": [
+    {
+      "from": "resources/ios-performance-runtime",
+      "to": "ios-performance-runtime",
+      "filter": [
+        "**/*"
+      ]
+    },
+    {
+      "from": "resources/platform-tools",
+      "to": "platform-tools",
+      "filter": [
+        "**/*"
+      ]
+    }
   ],
   "mac": {
     "icon": "assets/icons/test-cat.icns",

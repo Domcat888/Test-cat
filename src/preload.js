@@ -5,6 +5,10 @@ const streamListeners = new Set();
 const statusListeners = new Set();
 const performanceSampleListeners = new Set();
 const performanceStatusListeners = new Set();
+const iosMirrorFrameListeners = new Set();
+const iosMirrorStatusListeners = new Set();
+const iosPerformanceSampleListeners = new Set();
+const iosPerformanceStatusListeners = new Set();
 const weakNetworkStatusListeners = new Set();
 const weakNetworkStatsListeners = new Set();
 const logAnalysisLogListeners = new Set();
@@ -34,6 +38,18 @@ ipcRenderer.on('performance-monitor:sample', (_event, sample) => {
 });
 ipcRenderer.on('performance-monitor:status', (_event, status) => {
   for (const listener of performanceStatusListeners) listener(status);
+});
+ipcRenderer.on('ios-mirror:frame', (_event, frame) => {
+  for (const listener of iosMirrorFrameListeners) listener(frame);
+});
+ipcRenderer.on('ios-mirror:status', (_event, status) => {
+  for (const listener of iosMirrorStatusListeners) listener(status);
+});
+ipcRenderer.on('ios-performance:sample', (_event, sample) => {
+  for (const listener of iosPerformanceSampleListeners) listener(sample);
+});
+ipcRenderer.on('ios-performance:status', (_event, status) => {
+  for (const listener of iosPerformanceStatusListeners) listener(status);
 });
 ipcRenderer.on('weak-network:status', (_event, status) => {
   for (const listener of weakNetworkStatusListeners) listener(status);
@@ -176,6 +192,12 @@ contextBridge.exposeInMainWorld('testCat', {
     stop: () => ipcRenderer.invoke('performance-monitor:stop'),
     launchApp: (serial, packageName) => ipcRenderer.invoke('performance-monitor:launch-app', { serial, packageName }),
     getForegroundApp: (serial) => ipcRenderer.invoke('performance-monitor:foreground-app', serial),
+    saveReport: (payload, options) => ipcRenderer.invoke('performance-monitor:save-report', payload, options),
+    migrateReports: (reports) => ipcRenderer.invoke('performance-monitor:migrate-reports', reports),
+    listReports: () => ipcRenderer.invoke('performance-monitor:list-reports'),
+    getReport: (id) => ipcRenderer.invoke('performance-monitor:get-report', id),
+    deleteReport: (id) => ipcRenderer.invoke('performance-monitor:delete-report', id),
+    exportXlsx: (id) => ipcRenderer.invoke('performance-monitor:export-xlsx', id),
     onSample: (listener) => {
       performanceSampleListeners.add(listener);
       return () => performanceSampleListeners.delete(listener);
@@ -183,6 +205,31 @@ contextBridge.exposeInMainWorld('testCat', {
     onStatus: (listener) => {
       performanceStatusListeners.add(listener);
       return () => performanceStatusListeners.delete(listener);
+    }
+  },
+  iosPerformance: {
+    openWindow: () => ipcRenderer.invoke('ios-performance:open-window'),
+    checkEnvironment: () => ipcRenderer.invoke('ios-performance:check-environment'),
+    listDevices: () => ipcRenderer.invoke('ios-performance:list-devices'),
+    listApps: (serial) => ipcRenderer.invoke('ios-performance:list-apps', serial),
+    getDeviceStatus: (serial) => ipcRenderer.invoke('ios-performance:device-status', serial),
+    start: (configuration) => ipcRenderer.invoke('ios-performance:start', configuration),
+    stop: () => ipcRenderer.invoke('ios-performance:stop'),
+    startTunnel: () => ipcRenderer.invoke('ios-performance:start-tunnel'),
+    collectLogs: (serial) => ipcRenderer.invoke('ios-performance:collect-logs', serial),
+    listLogs: (filters) => ipcRenderer.invoke('ios-performance:list-logs', filters),
+    getLog: (id) => ipcRenderer.invoke('ios-performance:get-log', id),
+    saveReport: (payload, options) => ipcRenderer.invoke('ios-performance:save-report', payload, options),
+    listReports: () => ipcRenderer.invoke('ios-performance:list-reports'),
+    getReport: (id) => ipcRenderer.invoke('ios-performance:get-report', id),
+    deleteReport: (id) => ipcRenderer.invoke('ios-performance:delete-report', id),
+    onSample: (listener) => {
+      iosPerformanceSampleListeners.add(listener);
+      return () => iosPerformanceSampleListeners.delete(listener);
+    },
+    onStatus: (listener) => {
+      iosPerformanceStatusListeners.add(listener);
+      return () => iosPerformanceStatusListeners.delete(listener);
     }
   },
   weakNetwork: {
@@ -246,6 +293,21 @@ contextBridge.exposeInMainWorld('testCat', {
     onStatus: (listener) => {
       statusListeners.add(listener);
       return () => statusListeners.delete(listener);
+    }
+  },
+  iosMirror: {
+    openWindow: () => ipcRenderer.invoke('ios-mirror:open-window'),
+    setAlwaysOnTop: (enabled) => ipcRenderer.invoke('ios-mirror:set-always-on-top', Boolean(enabled)),
+    listDevices: () => ipcRenderer.invoke('ios-mirror:list-devices'),
+    start: (configuration) => ipcRenderer.invoke('ios-mirror:start', configuration),
+    stop: () => ipcRenderer.invoke('ios-mirror:stop'),
+    onFrame: (listener) => {
+      iosMirrorFrameListeners.add(listener);
+      return () => iosMirrorFrameListeners.delete(listener);
+    },
+    onStatus: (listener) => {
+      iosMirrorStatusListeners.add(listener);
+      return () => iosMirrorStatusListeners.delete(listener);
     }
   }
 });

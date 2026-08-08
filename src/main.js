@@ -18,7 +18,12 @@ const {
   shell
 } = require('electron');
 const { MobileMirrorService } = require('./mobile-mirror-service');
+const { IosMirrorService } = require('./ios-mirror-service');
+const { IosPerformanceService } = require('./ios-performance-service');
+const { IosPerformanceHistory } = require('./ios-performance-history');
 const { PerformanceMonitorService } = require('./performance-monitor-service');
+const { PerformanceMonitorHistory } = require('./performance-monitor-history');
+const { createPerformanceWorkbook } = require('./android-performance-xlsx');
 const { WeakNetworkService } = require('./weak-network-service');
 const { FileCompareService } = require('./file-compare-service');
 const { LogAnalysisService } = require('./log-analysis-service');
@@ -34,6 +39,8 @@ const {
 const isMac = process.platform === 'darwin';
 let mainWindow = null;
 let mobileMirrorWindow = null;
+let iosMirrorWindow = null;
+let iosPerformanceWindow = null;
 let calculatorWindow = null;
 let performanceMonitorWindow = null;
 let weakNetworkWindow = null;
@@ -49,7 +56,11 @@ let recorderWindow = null;
 let recordingBorderWindow = null;
 let capturePreviewWindow = null;
 let mobileMirrorService = null;
+let iosMirrorService = null;
+let iosPerformanceService = null;
+let iosPerformanceHistory = null;
 let performanceMonitorService = null;
+let performanceMonitorHistory = null;
 let weakNetworkService = null;
 let fileCompareService = null;
 let logAnalysisService = null;
@@ -1575,6 +1586,19 @@ function setupIpc() {
     mobileMirrorWindow.setAlwaysOnTop(Boolean(enabled), isMac ? 'floating' : 'normal');
     return mobileMirrorWindow.isAlwaysOnTop();
   });
+  ipcMain.handle('ios-mirror:open-window', () => {
+    createIosMirrorWindow();
+    return true;
+  });
+  ipcMain.handle('ios-mirror:list-devices', () => iosMirrorService.listDevices());
+  ipcMain.handle('ios-mirror:start', (_event, configuration) => iosMirrorService.start(configuration || {}));
+  ipcMain.handle('ios-mirror:stop', () => iosMirrorService.stop());
+  ipcMain.handle('ios-mirror:set-always-on-top', (event, enabled) => {
+    const senderWindow = BrowserWindow.fromWebContents(event.sender);
+    if (!iosMirrorWindow || senderWindow !== iosMirrorWindow) return false;
+    iosMirrorWindow.setAlwaysOnTop(Boolean(enabled), isMac ? 'floating' : 'normal');
+    return iosMirrorWindow.isAlwaysOnTop();
+  });
   ipcMain.handle('app-update:check', () => checkAppUpdate());
   ipcMain.handle('app-update:download', (_event, payload = {}) => downloadAppUpdate(payload));
   ipcMain.handle('calculator:open-window', () => {
@@ -1590,6 +1614,47 @@ function setupIpc() {
   ipcMain.handle('performance-monitor:stop', () => performanceMonitorService.stop());
   ipcMain.handle('performance-monitor:launch-app', (_event, { serial, packageName }) => performanceMonitorService.launchApp(serial, packageName));
   ipcMain.handle('performance-monitor:foreground-app', (_event, serial) => performanceMonitorService.getForegroundApp(serial));
+  ipcMain.handle('performance-monitor:save-report', (_event, payload, options) => performanceMonitorHistory.saveReport(payload, options || {}));
+  ipcMain.handle('performance-monitor:migrate-reports', (_event, reports) => performanceMonitorHistory.migrateReports(reports));
+  ipcMain.handle('performance-monitor:list-reports', () => performanceMonitorHistory.listReports());
+  ipcMain.handle('performance-monitor:get-report', (_event, id) => performanceMonitorHistory.getReport(String(id || '')));
+  ipcMain.handle('performance-monitor:delete-report', (_event, id) => performanceMonitorHistory.deleteReport(String(id || '')));
+  ipcMain.handle('performance-monitor:export-xlsx', async (event, id) => {
+    const report = await performanceMonitorHistory.getReport(String(id || ''));
+    if (!report) throw new Error('报告不存在或已经损坏。');
+    const senderWindow = BrowserWindow.fromWebContents(event.sender);
+    const safeName = String(report.name || '安卓性能报告').replace(/[\\/:*?"<>|]/g, '_').slice(0, 80);
+    const result = await dialog.showSaveDialog(senderWindow || performanceMonitorWindow || mainWindow, {
+      title: '导出安卓性能 Excel',
+      defaultPath: `${safeName}.xlsx`,
+      filters: [{ name: 'Excel 工作簿', extensions: ['xlsx'] }]
+    });
+    if (result.canceled || !result.filePath) return null;
+    await fsp.writeFile(result.filePath, createPerformanceWorkbook(report));
+    return { path: result.filePath };
+  });
+  ipcMain.handle('ios-performance:open-window', () => {
+    createIosPerformanceWindow();
+    return true;
+  });
+  ipcMain.handle('ios-performance:check-environment', () => iosPerformanceService.checkEnvironment());
+  ipcMain.handle('ios-performance:list-devices', () => iosPerformanceService.listDevices());
+  ipcMain.handle('ios-performance:list-apps', (_event, serial) => iosPerformanceService.getInstalledApps(serial));
+  ipcMain.handle('ios-performance:device-status', (_event, serial) => iosPerformanceService.getDeviceStatus(serial));
+  ipcMain.handle('ios-performance:start', (_event, configuration) => iosPerformanceService.start(configuration || {}));
+  ipcMain.handle('ios-performance:stop', () => iosPerformanceService.stop());
+  ipcMain.handle('ios-performance:start-tunnel', () => iosPerformanceService.startTunnel());
+  ipcMain.handle('ios-performance:collect-logs', async (_event, serial) => {
+    const result = await iosPerformanceService.collectDiagnosticLogs(serial);
+    const inserted = await iosPerformanceHistory.saveLogs(result.records);
+    return { scanned: result.scanned, selected: result.selected, imported: inserted.length, logs: await iosPerformanceHistory.listLogs({ deviceSerial: serial }) };
+  });
+  ipcMain.handle('ios-performance:list-logs', (_event, filters) => iosPerformanceHistory.listLogs(filters || {}));
+  ipcMain.handle('ios-performance:get-log', (_event, id) => iosPerformanceHistory.getLog(String(id || '')));
+  ipcMain.handle('ios-performance:save-report', (_event, payload, options) => iosPerformanceHistory.saveReport(payload, options || {}));
+  ipcMain.handle('ios-performance:list-reports', () => iosPerformanceHistory.listReports());
+  ipcMain.handle('ios-performance:get-report', (_event, id) => iosPerformanceHistory.getReport(String(id || '')));
+  ipcMain.handle('ios-performance:delete-report', (_event, id) => iosPerformanceHistory.deleteReport(String(id || '')));
   ipcMain.handle('weak-network:open-window', () => {
     createWeakNetworkWindow();
     return true;
@@ -1941,7 +2006,7 @@ function createMobileMirrorWindow() {
     minWidth: 820,
     minHeight: 600,
     show: false,
-    title: '手机投屏 - Test cat',
+    title: '安卓投屏 - Test cat',
     icon: path.join(__dirname, '../assets/modules/mobile-mirror.png'),
     titleBarStyle: isMac ? 'hiddenInset' : 'default',
     backgroundColor: '#f4f6f8',
@@ -1965,6 +2030,46 @@ function createMobileMirrorWindow() {
     mobileMirrorService?.stop();
   });
 
+  return window;
+}
+
+function createIosMirrorWindow() {
+  if (iosMirrorWindow && !iosMirrorWindow.isDestroyed()) {
+    if (iosMirrorWindow.isMinimized()) iosMirrorWindow.restore();
+    iosMirrorWindow.show();
+    iosMirrorWindow.focus();
+    return iosMirrorWindow;
+  }
+
+  const window = new BrowserWindow({
+    width: 1120,
+    height: 780,
+    minWidth: 820,
+    minHeight: 600,
+    show: false,
+    title: 'iOS 投屏 - Test cat',
+    icon: path.join(__dirname, '../assets/modules/ios-mirror.png'),
+    titleBarStyle: isMac ? 'hiddenInset' : 'default',
+    backgroundColor: '#f4f6f8',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true
+    }
+  });
+
+  iosMirrorWindow = window;
+  window.loadFile(path.join(__dirname, 'renderer/ios-mirror.html'));
+  window.once('ready-to-show', () => {
+    window.show();
+    if (process.argv.includes('--devtools')) window.webContents.openDevTools({ mode: 'detach' });
+  });
+  configureWindow(window);
+  window.on('closed', () => {
+    if (iosMirrorWindow === window) iosMirrorWindow = null;
+    iosMirrorService?.stop(false);
+  });
   return window;
 }
 
@@ -2020,7 +2125,7 @@ function createPerformanceMonitorWindow() {
     minWidth: 980,
     minHeight: 680,
     show: false,
-    title: '性能监控 - Test cat',
+    title: '安卓性能监控 - Test cat',
     icon: path.join(__dirname, '../assets/modules/performance-monitor.png'),
     titleBarStyle: isMac ? 'hiddenInset' : 'default',
     backgroundColor: '#10151d',
@@ -2042,6 +2147,46 @@ function createPerformanceMonitorWindow() {
   window.on('closed', () => {
     if (performanceMonitorWindow === window) performanceMonitorWindow = null;
     performanceMonitorService?.stop(false);
+  });
+  return window;
+}
+
+function createIosPerformanceWindow() {
+  if (iosPerformanceWindow && !iosPerformanceWindow.isDestroyed()) {
+    if (iosPerformanceWindow.isMinimized()) iosPerformanceWindow.restore();
+    iosPerformanceWindow.show();
+    iosPerformanceWindow.focus();
+    return iosPerformanceWindow;
+  }
+
+  const window = new BrowserWindow({
+    width: 1280,
+    height: 860,
+    minWidth: 920,
+    minHeight: 680,
+    show: false,
+    title: 'iOS 性能监控 - Test cat',
+    icon: path.join(__dirname, '../assets/modules/performance-monitor.png'),
+    titleBarStyle: isMac ? 'hiddenInset' : 'default',
+    backgroundColor: '#10151d',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true
+    }
+  });
+
+  iosPerformanceWindow = window;
+  window.loadFile(path.join(__dirname, 'renderer/ios-performance.html'));
+  window.once('ready-to-show', () => {
+    window.show();
+    if (process.argv.includes('--devtools')) window.webContents.openDevTools({ mode: 'detach' });
+  });
+  configureWindow(window);
+  window.on('closed', () => {
+    if (iosPerformanceWindow === window) iosPerformanceWindow = null;
+    iosPerformanceService?.stop(false);
   });
   return window;
 }
@@ -2374,7 +2519,35 @@ app.whenReady().then(() => {
       }
     }
   });
+  iosMirrorService = new IosMirrorService({
+    onFrame: (frame) => {
+      if (iosMirrorWindow && !iosMirrorWindow.isDestroyed()) iosMirrorWindow.webContents.send('ios-mirror:frame', frame);
+    },
+    onStatus: (status) => {
+      if (iosMirrorWindow && !iosMirrorWindow.isDestroyed()) iosMirrorWindow.webContents.send('ios-mirror:status', status);
+    }
+  });
+  iosPerformanceService = new IosPerformanceService({
+    listDevices: () => iosMirrorService.listDevices(),
+    runtimeRoots: [
+      path.join(process.resourcesPath, 'ios-performance-runtime'),
+      path.join(app.getAppPath(), 'resources', 'ios-performance-runtime')
+    ],
+    packaged: app.isPackaged,
+    onSample: (sample) => {
+      if (iosPerformanceWindow && !iosPerformanceWindow.isDestroyed()) iosPerformanceWindow.webContents.send('ios-performance:sample', sample);
+    },
+    onStatus: (status) => {
+      if (iosPerformanceWindow && !iosPerformanceWindow.isDestroyed()) iosPerformanceWindow.webContents.send('ios-performance:status', status);
+    }
+  });
+  iosPerformanceHistory = new IosPerformanceHistory(path.join(app.getPath('userData'), 'ios-performance'));
   performanceMonitorService = new PerformanceMonitorService({
+    runtimeRoots: [
+      path.join(process.resourcesPath, 'platform-tools'),
+      path.join(app.getAppPath(), 'resources', 'platform-tools')
+    ],
+    packaged: app.isPackaged,
     onSample: (sample) => {
       if (performanceMonitorWindow && !performanceMonitorWindow.isDestroyed()) performanceMonitorWindow.webContents.send('performance-monitor:sample', sample);
     },
@@ -2382,6 +2555,7 @@ app.whenReady().then(() => {
       if (performanceMonitorWindow && !performanceMonitorWindow.isDestroyed()) performanceMonitorWindow.webContents.send('performance-monitor:status', status);
     }
   });
+  performanceMonitorHistory = new PerformanceMonitorHistory(path.join(app.getPath('userData'), 'android-performance'));
   weakNetworkService = new WeakNetworkService({
     appPath: app.getAppPath(),
     onStatus: (status) => {
@@ -2441,6 +2615,8 @@ app.on('before-quit', (event) => {
   clearCompanionPetTimers();
   Promise.allSettled([
     mobileMirrorService?.dispose(),
+    iosMirrorService?.dispose(),
+    iosPerformanceService?.dispose(),
     performanceMonitorService?.dispose(),
     weakNetworkService?.dispose(),
     logAnalysisService?.dispose()

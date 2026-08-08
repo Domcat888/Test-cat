@@ -9,3 +9,7 @@ npm-debug.log*
 src/renderer/mobile-mirror.bundle.js
 electron-v*.zip
 vendor/electron-v*.zip
+resources/ios-performance-runtime/
+resources/platform-tools/
+__pycache__/
+*.pyc

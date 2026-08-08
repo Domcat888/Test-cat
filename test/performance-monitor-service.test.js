@@ -155,3 +155,15 @@ test('app metrics become unavailable after the target app is killed', async () =
   assert.equal(sample.appMemory, null);
   assert.match(sample.quality.appCpuUsage.reason, /未运行|杀掉/);
 });
+
+test('resolves bundled ADB candidates for Windows and macOS', () => {
+  const root = '/runtime/platform-tools';
+  assert.deepEqual(__test.adbCandidates([root], {}, 'win32', 'x64'), [
+    '/runtime/platform-tools/win32-x64/adb.exe',
+    'adb.exe'
+  ]);
+  assert.deepEqual(__test.adbCandidates([root], {}, 'darwin', 'arm64'), [
+    '/runtime/platform-tools/darwin-arm64/adb',
+    'adb'
+  ]);
+});

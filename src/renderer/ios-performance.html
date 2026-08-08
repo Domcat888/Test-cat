@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>iOS 性能监控 - Test cat</title>
+    <link rel="stylesheet" href="ios-performance.css" />
+  </head>
+  <body class="ios-performance-body">
+    <div class="ios-performance-shell">
+      <header class="ios-performance-titlebar">
+        <div class="ios-performance-brand">
+          <img src="../../assets/modules/performance-monitor.png" alt="" />
+          <div><strong>iOS 性能监控</strong><span>Test cat · Apple DVT Performance Lab</span></div>
+        </div>
+        <div class="ios-window-state">
+          <span class="ios-platform-badge" id="ios-platform-badge">准备检测</span>
+          <span class="ios-status" id="ios-performance-status" data-phase="idle"><i></i><b id="ios-performance-status-text">等待连接</b></span>
+        </div>
+      </header>
+
+      <nav class="ios-tabs">
+        <button class="active" data-ios-page="monitor">实时监控</button>
+        <button data-ios-page="device">设备信息</button>
+        <button data-ios-page="logs">诊断日志 <span id="ios-log-count">0</span></button>
+        <button data-ios-page="reports">历史报告 <span id="ios-report-count">0</span></button>
+        <button data-ios-page="compare">性能对比</button>
+      </nav>
+
+      <main>
+        <section class="ios-page active" id="ios-monitor-page">
+          <div class="ios-performance-setup">
+            <div class="ios-setup-row">
+              <label class="ios-device-field">iPhone 设备<select id="ios-performance-device"><option value="">正在检测设备…</option></select></label>
+              <button class="ios-button secondary" id="ios-performance-refresh">刷新设备</button>
+              <label>采样间隔<select id="ios-performance-interval"><option value="1000">1 秒</option><option value="2000" selected>2 秒</option><option value="5000">5 秒</option><option value="10000">10 秒</option></select></label>
+              <button class="ios-button secondary" id="ios-performance-tunnel">启动性能桥接</button>
+            </div>
+            <div class="ios-status-line"><span id="ios-performance-environment">正在检查内置 iOS 采集引擎…</span><span>设备未返回的数据保持为空，不生成模拟值</span></div>
+            <div class="ios-test-options">
+              <label class="ios-app-field">指定 App（可选）<select id="ios-performance-app"><option value="">不采集 App 进程</option></select></label>
+              <button class="ios-button secondary" id="ios-performance-app-refresh" disabled>刷新 App</button>
+              <label class="ios-report-name">报告名称<input id="ios-performance-report-name" maxlength="80" placeholder="例如：iPhone 登录页基线" /></label>
+            </div>
+            <div class="ios-metric-picker">
+              <div class="ios-picker-heading"><strong>选择采集指标</strong><button class="ios-text-button" id="ios-performance-toggle-all">取消全选</button></div>
+              <div class="ios-metric-options">
+                <label><input type="checkbox" value="cpu" checked /><b>CPU</b><small>Apple DVT 多核归一化</small></label>
+                <label><input type="checkbox" value="memory" checked /><b>内存</b><small>iOS 16 KiB VM 页换算</small></label>
+                <label><input type="checkbox" value="thermal" checked /><b>温控 / 电量</b><small>电池温度、等级与充电状态</small></label>
+                <label><input type="checkbox" value="graphics" checked /><b>FPS / GPU</b><small>Core Animation / DVT</small></label>
+                <label><input type="checkbox" value="app" /><b>App 进程</b><small>CPU / physFootprint</small></label>
+              </div>
+            </div>
+            <div class="ios-test-actions">
+              <p>停止后自动保存到历史报告，最长保留 24 小时原始采样。</p>
+              <button class="ios-button primary" id="ios-performance-start" disabled>开始测试</button>
+              <button class="ios-button danger" id="ios-performance-stop" disabled>停止测试</button>
+            </div>
+          </div>
+
+          <section class="ios-dashboard" id="ios-performance-dashboard" hidden>
+            <div class="ios-dashboard-heading"><div><strong id="ios-dashboard-device">iPhone</strong><span id="ios-dashboard-duration">00:00</span></div><span id="ios-dashboard-samples">0 个采样点</span></div>
+            <div class="ios-kpis">
+              <article><span>CPU</span><strong id="ios-kpi-cpuUsage">—</strong><small id="ios-quality-cpuUsage">等待采样</small></article>
+              <article><span>内存</span><strong id="ios-kpi-memoryUsed">—</strong><small id="ios-quality-memoryUsed">等待采样</small></article>
+              <article><span>电池温度</span><strong id="ios-kpi-batteryTemperature">—</strong><small id="ios-quality-batteryTemperature">等待采样</small></article>
+              <article><span>系统 FPS</span><strong id="ios-kpi-fps">—</strong><small id="ios-quality-fps">等待采样</small></article>
+              <article><span>设备 GPU</span><strong id="ios-kpi-gpuUsage">—</strong><small id="ios-quality-gpuUsage">等待采样</small></article>
+              <article><span>App CPU</span><strong id="ios-kpi-appCpuUsage">—</strong><small id="ios-quality-appCpuUsage">等待采样</small></article>
+            </div>
+            <div class="ios-chart-grid">
+              <article class="ios-chart-card"><div><strong>CPU 使用率</strong><span>设备 · %</span></div><canvas data-series="cpuUsage"></canvas></article>
+              <article class="ios-chart-card"><div><strong>内存使用</strong><span>设备 · MB</span></div><canvas data-series="memoryUsed"></canvas></article>
+              <article class="ios-chart-card"><div><strong>电池温度</strong><span>°C</span></div><canvas data-series="batteryTemperature"></canvas></article>
+              <article class="ios-chart-card"><div><strong>FPS / GPU</strong><span>设备指标</span></div><canvas data-series="fps"></canvas><canvas data-series="gpuUsage"></canvas></article>
+              <article class="ios-chart-card ios-app-chart"><div><strong>App 进程</strong><span>CPU % / 内存 MB</span></div><canvas data-series="appCpuUsage"></canvas><canvas data-series="appMemory"></canvas></article>
+            </div>
+          </section>
+        </section>
+
+        <section class="ios-page" id="ios-device-page">
+          <div class="ios-page-heading"><div><h2>设备信息</h2><p>读取当前已信任 iPhone 的硬件、系统、电池、存储和连接状态。</p></div><button class="ios-button primary" id="ios-device-load">读取设备信息</button></div>
+          <div class="ios-info-grid" id="ios-device-info"><div class="ios-empty"><h3>尚未读取设备</h3><p>连接并解锁 iPhone 后点击“读取设备信息”。</p></div></div>
+        </section>
+
+        <section class="ios-page" id="ios-logs-page">
+          <div class="ios-page-heading"><div><h2>诊断日志</h2><p>从手机读取最新 Crash、Jetsam 和 Performance 日志；不会删除手机原件。</p></div><div class="ios-heading-actions"><select id="ios-log-filter"><option value="">全部类型</option><option value="Crash">Crash</option><option value="Jetsam">Jetsam</option><option value="Performance">Performance</option></select><button class="ios-button primary" id="ios-log-collect">读取最新日志</button></div></div>
+          <div class="ios-split-view">
+            <div class="ios-log-list" id="ios-log-list"><div class="ios-empty"><h3>暂无诊断日志</h3><p>读取后会保存在本机历史中。</p></div></div>
+            <article class="ios-log-detail" id="ios-log-detail"><div class="ios-empty"><h3>选择一份日志</h3><p>这里会显示异常摘要与完整原文。</p></div></article>
+          </div>
+        </section>
+
+        <section class="ios-page" id="ios-reports-page">
+          <div class="ios-page-heading"><div><h2>历史报告</h2><p>本机持久保存，支持 JSON 导入以及 JSON / HTML 导出。</p></div><div class="ios-heading-actions"><input id="ios-report-import-input" type="file" accept=".json,application/json" hidden /><button class="ios-button secondary" id="ios-report-import">导入 JSON</button></div></div>
+          <div class="ios-report-list" id="ios-report-list"><div class="ios-empty"><h3>暂无性能报告</h3><p>完成一次测试后会自动保存。</p></div></div>
+        </section>
+
+        <section class="ios-page" id="ios-compare-page">
+          <div class="ios-page-heading"><div><h2>性能对比</h2><p>比较两份报告的平均值、峰值和变化比例。</p></div></div>
+          <div class="ios-compare-picker"><label>基准报告<select id="ios-compare-left"><option value="">选择报告</option></select></label><span>对比</span><label>目标报告<select id="ios-compare-right"><option value="">选择报告</option></select></label><button class="ios-button primary" id="ios-compare-run">开始对比</button></div>
+          <div class="ios-compare-result" id="ios-compare-result" hidden>
+            <div class="ios-compare-table-wrap"><table><thead><tr><th>指标</th><th>基准平均</th><th>目标平均</th><th>变化</th><th>基准峰值</th><th>目标峰值</th></tr></thead><tbody id="ios-compare-body"></tbody></table></div>
+            <article class="ios-compare-chart"><div><strong id="ios-compare-title">报告趋势</strong><select id="ios-compare-metric"></select></div><canvas id="ios-compare-canvas"></canvas></article>
+          </div>
+          <div class="ios-empty" id="ios-compare-empty"><h3>请选择两份不同的报告</h3><p>报告会按同一时间进度对齐，采样间隔可以不同。</p></div>
+        </section>
+      </main>
+    </div>
+    <div class="ios-performance-toast" id="ios-performance-toast"></div>
+    <script src="ios-performance.js"></script>
+  </body>
+</html>

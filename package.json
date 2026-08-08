@@ -11,16 +11,19 @@
   },
   "scripts": {
     "build:renderer": "esbuild src/renderer/mobile-mirror-entry.js --bundle --format=iife --platform=browser --target=chrome120 --outfile=src/renderer/mobile-mirror.bundle.js",
-    "start": "npm run build:renderer && electron .",
-    "preview": "npm run build:renderer && electron .",
-    "dev": "npm run build:renderer && electron . --devtools",
+    "prepare:android-runtime": "node scripts/prepare-android-platform-tools.mjs",
+    "prepare:ios-runtime": "node scripts/prepare-ios-performance-runtime.mjs",
+    "prepare:runtimes": "npm run prepare:android-runtime && npm run prepare:ios-runtime",
+    "start": "npm run prepare:runtimes && npm run build:renderer && electron .",
+    "preview": "npm run prepare:runtimes && npm run build:renderer && electron .",
+    "dev": "npm run prepare:runtimes && npm run build:renderer && electron . --devtools",
     "test": "node --test",
     "verify:scrcpy": "node scripts/verify-scrcpy.mjs",
-    "pack": "electron-builder --dir",
-    "build:mac": "electron-builder --mac",
-    "build:mac:catalina": "npm run build:renderer && electron-builder --config electron-builder.catalina.json --mac --x64",
-    "build:win": "electron-builder --win",
-    "build": "electron-builder --mac --win"
+    "pack": "npm run prepare:runtimes && npm run build:renderer && electron-builder --dir",
+    "build:mac": "npm run prepare:runtimes && npm run build:renderer && electron-builder --mac",
+    "build:mac:catalina": "npm run prepare:android-runtime -- --platform=darwin --arch=x64 && npm run prepare:ios-runtime -- --platform=darwin --arch=x64 && npm run build:renderer && electron-builder --config electron-builder.catalina.json --mac --x64",
+    "build:win": "npm run prepare:android-runtime -- --platform=win32 --arch=x64 && npm run prepare:ios-runtime -- --platform=win32 --arch=x64 && npm run build:renderer && electron-builder --win",
+    "build": "npm run prepare:runtimes && npm run build:renderer && electron-builder"
   },
   "devDependencies": {
     "@yume-chan/fetch-scrcpy-server": "^1.0.0",
@@ -39,8 +42,29 @@
       "src/**/*",
       "assets/**/*",
       "resources/**/*",
+      "!resources/ios-performance-runtime/**/*",
+      "!resources/platform-tools/**/*",
       "CHANGELOG.md",
       "package.json"
+    ],
+    "asarUnpack": [
+      "src/ios-performance-helper.py"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/ios-performance-runtime",
+        "to": "ios-performance-runtime",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "resources/platform-tools",
+        "to": "platform-tools",
+        "filter": [
+          "**/*"
+        ]
+      }
     ],
     "mac": {
       "icon": "assets/icons/test-cat.icns",

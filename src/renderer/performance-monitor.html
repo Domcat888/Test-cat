@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
-    <title>性能监控 - Test cat</title>
+    <title>安卓性能监控 - Test cat</title>
     <link rel="stylesheet" href="performance-monitor.css" />
   </head>
   <body>
@@ -12,7 +12,7 @@
       <header class="performance-titlebar">
         <div class="performance-brand">
           <img src="../../assets/modules/performance-monitor.png" alt="" />
-          <div><strong>性能监控</strong><span>Test cat · Android Performance Lab</span></div>
+          <div><strong>安卓性能监控</strong><span>Test cat · Android Performance Lab</span></div>
         </div>
         <div class="performance-window-status" id="performance-status" data-phase="idle"><i></i><span>等待开始</span></div>
       </header>
@@ -61,6 +61,7 @@
             <div class="live-summary"><div><i></i><strong>实时采集中</strong><span id="performance-duration">00:00</span></div><span id="performance-sample-count">0 个采样点</span></div>
             <div class="performance-kpis" id="performance-kpis"></div>
             <div class="performance-charts" id="performance-charts"></div>
+            <section class="performance-events-panel"><header><div><strong>测试事件</strong><span>App 状态、Crash、ANR 与自动性能预警</span></div><em id="performance-event-count">0</em></header><div id="performance-events"><p>尚未发现异常事件</p></div></section>
           </div>
         </section>
 
@@ -94,6 +95,7 @@
       </form>
     </div>
     <div class="performance-toast" id="performance-toast"></div>
+    <script src="performance-report-core.js"></script>
     <script src="performance-monitor.js"></script>
   </body>
 </html>

@@ -206,9 +206,11 @@ class MobileMirrorService {
 
   getAdbCandidates() {
     const executable = process.platform === 'win32' ? 'adb.exe' : 'adb';
+    const folder = `${process.platform}-${process.arch}`;
     return [
       process.env.ADB_PATH,
-      path.join(this.appPath, 'resources', 'platform-tools', `${process.platform}-${process.arch}`, executable),
+      path.join(process.resourcesPath || '', 'platform-tools', folder, executable),
+      path.join(this.appPath, 'resources', 'platform-tools', folder, executable),
       executable
     ].filter(Boolean);
   }
@@ -226,7 +228,7 @@ class MobileMirrorService {
         if (error.code !== 'ENOENT') break;
       }
     }
-    const error = new Error('未找到可用的 ADB。请先安装 Android Platform Tools，或设置 ADB_PATH。');
+    const error = new Error('内置 Android 调试引擎缺失或损坏，请重新安装 Test cat。');
     error.cause = lastError;
     throw error;
   }

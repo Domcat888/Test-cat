@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>iOS 投屏 - Test cat</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="ios-mirror.css" />
+  </head>
+  <body class="mirror-window-body ios-mirror-body">
+    <div class="mirror-window-shell">
+      <header class="mirror-window-titlebar">
+        <div class="mirror-window-brand">
+          <img src="../../assets/modules/ios-mirror.png" alt="" />
+          <div><strong>iOS 投屏</strong><span>Test cat · iPhone view only</span></div>
+        </div>
+        <label class="mirror-pin" title="让投屏画面保持在其他软件上方">
+          <input id="ios-always-on-top" type="checkbox" />
+          <span>窗口置顶</span>
+        </label>
+      </header>
+
+      <main class="ios-mirror-standalone">
+        <div class="mirror-toolbar ios-mirror-toolbar">
+          <div class="mirror-device-picker">
+            <label for="ios-device-select">iPhone 设备</label>
+            <select id="ios-device-select"><option value="">正在准备设备检测…</option></select>
+          </div>
+          <button class="secondary-button" id="ios-refresh">刷新设备</button>
+          <button class="primary-button" id="ios-start" disabled><span>⚡</span> 开始投屏</button>
+          <button class="danger-button" id="ios-stop" disabled>停止</button>
+        </div>
+
+        <div class="mirror-status-row">
+          <div class="mirror-status" id="ios-status" data-phase="idle"><span></span><b id="ios-status-text">等待连接</b></div>
+          <p>通过 USB 读取 iPhone 画面，支持 macOS 和 Windows。</p>
+        </div>
+
+        <div class="mirror-layout ios-mirror-layout">
+          <div class="mirror-stage" id="ios-viewer">
+            <button class="mirror-focus-toggle" id="ios-focus-mode" type="button" aria-pressed="false">⛶ 大画面</button>
+            <div class="mirror-placeholder" id="ios-placeholder">
+              <img src="../../assets/modules/ios-mirror.png" alt="" />
+              <h2 id="ios-placeholder-title">连接一台 iPhone</h2>
+              <p id="ios-placeholder-text">用数据线连接已信任的 iPhone，安装设备桥接工具后即可开始投屏。</p>
+              <ol><li>安装截图工具</li><li>连接并信任 iPhone</li><li>选择设备开始投屏</li></ol>
+            </div>
+            <img id="ios-screen" alt="iPhone 实时画面" hidden draggable="false" />
+          </div>
+
+          <aside class="mirror-controls">
+            <div class="mirror-device-info">
+              <span>当前设备</span><strong id="ios-device-name">尚未连接</strong>
+              <small>画面尺寸 <b id="ios-resolution">—</b></small>
+              <small>传输方式 <b id="ios-stream-mode">USB 截图轮询</b></small>
+            </div>
+            <div class="mirror-control-group">
+              <h3>画面工具</h3>
+              <button id="ios-screenshot">▣ 保存截图</button>
+              <button id="ios-fullscreen">⛶ 全屏显示</button>
+            </div>
+            <div class="mirror-help">
+              <b>只读投屏</b>
+              <p>当前模块只显示 iPhone 画面，不发送点击、滑动或文字输入。</p>
+            </div>
+          </aside>
+        </div>
+      </main>
+    </div>
+    <script src="ios-mirror.js"></script>
+  </body>
+</html>

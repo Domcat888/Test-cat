@@ -241,7 +241,7 @@ function handleStreamMessage(message) {
 }
 
 async function refreshDevices() {
-  if (!api) return setStatus({ phase: 'error', message: '手机投屏服务仅能在 Test cat 桌面版中使用。' });
+  if (!api) return setStatus({ phase: 'error', message: '安卓投屏服务仅能在 Test cat 桌面版中使用。' });
   elements.select.innerHTML = '<option value="">正在查找设备…</option>';
   elements.select.disabled = true;
   try {

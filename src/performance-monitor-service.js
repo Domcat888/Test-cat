@@ -1,9 +1,16 @@
 const { execFile } = require('node:child_process');
+const path = require('node:path');
 const { promisify } = require('node:util');
 
 const execFileAsync = promisify(execFile);
 const ALLOWED_METRICS = new Set(['cpu', 'memory', 'gpu', 'network', 'disk', 'app', 'device']);
 const PACKAGE_METRICS = new Set(['cpu', 'memory', 'gpu', 'network', 'app']);
+
+function adbCandidates(runtimeRoots = [], environment = process.env, platform = process.platform, arch = process.arch) {
+  const executable = platform === 'win32' ? 'adb.exe' : 'adb';
+  const bundled = runtimeRoots.map((root) => path.join(root, `${platform}-${arch}`, executable));
+  return [...new Set([environment.ADB_PATH, ...bundled, executable].filter(Boolean))];
+}
 
 function finite(value) {
   return Number.isFinite(value) ? value : null;
@@ -233,25 +240,41 @@ function setMetric(sample, key, value, metadata) {
 }
 
 class PerformanceMonitorService {
-  constructor({ onSample, onStatus }) {
+  constructor({ onSample, onStatus, runtimeRoots = [], packaged = false }) {
     this.onSample = onSample;
     this.onStatus = onStatus;
     this.session = null;
-    this.adbPath = process.env.ADB_PATH || (process.platform === 'win32' ? 'adb.exe' : 'adb');
+    this.runtimeRoots = runtimeRoots;
+    this.packaged = Boolean(packaged);
+    this.adbPath = null;
+    this.adbSource = null;
   }
 
   async adb(args, timeout = 15000) {
-    const { stdout } = await execFileAsync(this.adbPath, args, { timeout, windowsHide: true, maxBuffer: 12 * 1024 * 1024 });
+    const adbPath = this.adbPath || await this.ensureAdb();
+    const { stdout } = await execFileAsync(adbPath, args, { timeout, windowsHide: true, maxBuffer: 12 * 1024 * 1024 });
     return stdout;
   }
 
   async ensureAdb() {
-    try {
-      await this.adb(['start-server']);
-    } catch (error) {
-      const message = error.code === 'ENOENT' ? '未找到 ADB，请先安装 Android Platform Tools。' : `ADB 启动失败：${error.message}`;
-      throw new Error(message);
+    if (this.adbPath) return this.adbPath;
+    let lastError;
+    for (const candidate of adbCandidates(this.runtimeRoots)) {
+      try {
+        await execFileAsync(candidate, ['start-server'], { timeout: 15000, windowsHide: true, maxBuffer: 1024 * 1024 });
+        this.adbPath = candidate;
+        this.adbSource = this.runtimeRoots.some((root) => candidate.startsWith(root)) ? 'bundled' : candidate === process.env.ADB_PATH ? 'configured' : 'system';
+        return candidate;
+      } catch (error) {
+        lastError = error;
+      }
     }
+    const message = this.packaged
+      ? '内置 Android 调试引擎缺失或损坏，请重新安装 Test cat。'
+      : 'Android 调试引擎尚未准备，请运行 npm run prepare:android-runtime。';
+    const error = new Error(lastError?.code && lastError.code !== 'ENOENT' ? `ADB 启动失败：${lastError.message}` : message);
+    error.cause = lastError;
+    throw error;
   }
 
   async listDevices() {
@@ -275,6 +298,11 @@ class PerformanceMonitorService {
     const value = String(target || '8.8.8.8').trim();
     if (!/^[a-zA-Z0-9.-]+$/.test(value) || value.length > 253) throw new Error('网络探测地址格式不正确。');
     return value;
+  }
+
+  addSessionEvent(session, event) {
+    if (!Array.isArray(session.pendingEvents)) session.pendingEvents = [];
+    session.pendingEvents.push({ timestamp: Date.now(), packageName: session.packageName || '', ...event });
   }
 
   async getForegroundApp(serial) {
@@ -329,6 +357,7 @@ class PerformanceMonitorService {
   }
 
   async preparePackage(session, packageName) {
+    const previousPackage = session.packageName;
     session.packageName = packageName;
     session.packageUid = packageName ? await this.getPackageUid(session.serial, packageName) : null;
     session.surfaceLayer = packageName ? await this.discoverSurfaceLayer(session.serial, packageName) : null;
@@ -336,6 +365,9 @@ class PerformanceMonitorService {
     session.previous.gfx = null;
     session.previous.surfaceTimestamp = null;
     session.previous.network = null;
+    if (previousPackage && packageName && previousPackage !== packageName) {
+      this.addSessionEvent(session, { type: 'app-switch', level: 'info', label: `前台应用切换为 ${packageName}`, fromPackage: previousPackage, toPackage: packageName });
+    }
     if (packageName) {
       try { await this.adb(['-s', session.serial, 'shell', 'dumpsys', 'gfxinfo', packageName, 'reset']); } catch {}
       const existingEvents = await this.readCrashEventKeys(session.serial, packageName);
@@ -380,6 +412,7 @@ class PerformanceMonitorService {
       crashSeen: new Set(),
       crashCount: 0,
       crashSupported: true,
+      pendingEvents: [],
       surfaceLayer: null,
       lastForegroundNotice: '',
       lastAppRunningState: null
@@ -388,7 +421,7 @@ class PerformanceMonitorService {
     await this.preparePackage(session, packageName);
     this.onStatus({ phase: 'running', message: `严格实测模式：正在监控 ${device.model}`, serial, packageName });
     this.scheduleSample(0);
-    return { serial, model: device.model, metrics, packageName, followForeground, networkTarget: session.networkTarget, interval, startedAt: session.startedAt };
+    return { serial, model: device.model, metrics, packageName, followForeground, networkTarget: session.networkTarget, interval, startedAt: session.startedAt, bundledRuntime: this.adbSource === 'bundled' };
   }
 
   scheduleSample(delay) {
@@ -491,6 +524,15 @@ class PerformanceMonitorService {
       if (session.crashSeen.has(key)) continue;
       session.crashSeen.add(key);
       session.crashCount += 1;
+      const type = key.startsWith('anr:') ? 'anr' : 'crash';
+      const timestampPart = key.split(':', 2)[1];
+      const timestamp = Number(timestampPart);
+      this.addSessionEvent(session, {
+        timestamp: Number.isFinite(timestamp) ? timestamp * 1000 : Date.now(),
+        type,
+        level: 'error',
+        label: type === 'anr' ? '检测到目标 App ANR' : '检测到目标 App 崩溃'
+      });
     }
   }
 
@@ -547,8 +589,13 @@ class PerformanceMonitorService {
     };
     if (session.packageName && session.lastAppRunningState !== appRunning) {
       session.lastAppRunningState = appRunning;
-      if (!appRunning) this.onStatus({ phase: 'warning', message: `${session.packageName} 未运行，App 指标已暂停。`, packageName: session.packageName });
-      else this.onStatus({ phase: 'running', message: `正在监控 ${session.packageName}${appForeground ? '' : '（后台）'}`, packageName: session.packageName });
+      if (!appRunning) {
+        this.addSessionEvent(session, { type: 'app-state', level: 'warning', label: `${session.packageName} 已停止运行`, running: false });
+        this.onStatus({ phase: 'warning', message: `${session.packageName} 未运行，App 指标已暂停。`, packageName: session.packageName });
+      } else {
+        this.addSessionEvent(session, { type: 'app-state', level: 'info', label: `${session.packageName} 开始运行`, running: true, foreground: appForeground });
+        this.onStatus({ phase: 'running', message: `正在监控 ${session.packageName}${appForeground ? '' : '（后台）'}`, packageName: session.packageName });
+      }
     }
     const appTicks = parseProcessTicks(this.section(output, 'APP_PROC', 'CPU_FREQ'));
     const appTickDelta = Number.isFinite(appTicks) && Number.isFinite(previous.appTicks) ? appTicks - previous.appTicks : null;
@@ -642,6 +689,7 @@ class PerformanceMonitorService {
     previous.network = network ? { ...network, timestamp: completedAt } : null;
     previous.disk = disk ? { ...disk, timestamp: completedAt } : null;
     sample.collectionDurationMs = completedAt - capturedAt;
+    sample.events = Array.isArray(session.pendingEvents) ? session.pendingEvents.splice(0) : [];
     return sample;
   }
 
@@ -673,6 +721,7 @@ class PerformanceMonitorService {
 module.exports = {
   PerformanceMonitorService,
   __test: {
+    adbCandidates,
     calculateCpuDelta,
     isIgnoredForegroundPackage,
     parseAppMemory,

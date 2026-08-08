@@ -2,7 +2,7 @@ const STORAGE_KEY = 'test-cat-modules-v1';
 const THEME_KEY = 'test-cat-theme';
 const TOOL_ORDER_KEY = 'test-cat-tool-order-v1';
 const TODO_KEY = 'test-cat-todos-v1';
-const BUILT_IN_TOOL_IDS = ['mobile-mirror', 'calculator', 'performance-monitor', 'weak-network', 'file-compare', 'log-analysis', 'app-package', 'mock-data', 'timestamp-converter', 'formula-calculator', 'ai-test-assistant'];
+const BUILT_IN_TOOL_IDS = ['mobile-mirror', 'ios-mirror', 'ios-performance', 'calculator', 'performance-monitor', 'weak-network', 'file-compare', 'log-analysis', 'app-package', 'mock-data', 'timestamp-converter', 'formula-calculator', 'ai-test-assistant'];
 
 const state = {
   modules: loadModules(),
@@ -211,11 +211,22 @@ function moduleCard(module, sortable = false) {
 function mobileMirrorCard() {
   return `
     <article class="module-card built-in-module sortable-tool" data-open-mobile-mirror data-tool-id="mobile-mirror" draggable="true" role="button" tabindex="0">
-      <div class="module-picture"><img src="../../assets/modules/mobile-mirror.png" alt="手机投屏" /></div>
+      <div class="module-picture"><img src="../../assets/modules/mobile-mirror.png" alt="安卓投屏" /></div>
       <span class="built-in-badge">内置工具</span>
-      <h3>手机投屏</h3>
+      <h3>安卓投屏</h3>
       <p>连接 Android 手机，直接在 Test cat 中查看并控制手机画面。</p>
       <div class="module-meta"><span class="module-tag">Android</span></div>
+    </article>`;
+}
+
+function iosMirrorCard() {
+  return `
+    <article class="module-card built-in-module sortable-tool" data-open-ios-mirror data-tool-id="ios-mirror" draggable="true" role="button" tabindex="0">
+      <div class="module-picture"><img src="../../assets/modules/ios-mirror.png" alt="iOS 投屏" /></div>
+      <span class="built-in-badge">内置工具</span>
+      <h3>iOS 投屏</h3>
+      <p>通过 USB 连接 iPhone，在 Test cat 中跨平台查看实时画面。</p>
+      <div class="module-meta"><span class="module-tag">iOS</span></div>
     </article>`;
 }
 
@@ -233,11 +244,22 @@ function calculatorCard() {
 function performanceMonitorCard() {
   return `
     <article class="module-card built-in-module sortable-tool" data-open-performance-monitor data-tool-id="performance-monitor" draggable="true" role="button" tabindex="0">
-      <div class="module-picture"><img src="../../assets/modules/performance-monitor.png" alt="性能监控" /></div>
+      <div class="module-picture"><img src="../../assets/modules/performance-monitor.png" alt="安卓性能监控" /></div>
       <span class="built-in-badge">内置工具</span>
-      <h3>性能监控</h3>
+      <h3>安卓性能监控</h3>
       <p>实时采集 Android CPU、内存、GPU、网络、磁盘和应用性能。</p>
       <div class="module-meta"><span class="module-tag">性能测试</span></div>
+    </article>`;
+}
+
+function iosPerformanceCard() {
+  return `
+    <article class="module-card built-in-module sortable-tool" data-open-ios-performance data-tool-id="ios-performance" draggable="true" role="button" tabindex="0">
+      <div class="module-picture"><img src="../../assets/modules/performance-monitor.png" alt="iOS 性能监控" /></div>
+      <span class="built-in-badge">内置工具</span>
+      <h3>iOS 性能监控</h3>
+      <p>跨 Windows 和 macOS 采集 iPhone CPU、内存、温度、FPS、GPU 与 App 进程指标。</p>
+      <div class="module-meta"><span class="module-tag">iOS 性能</span></div>
     </article>`;
 }
 
@@ -341,6 +363,8 @@ function normalizedToolOrder() {
 
 function homeToolCard(id) {
   if (id === 'mobile-mirror') return mobileMirrorCard();
+  if (id === 'ios-mirror') return iosMirrorCard();
+  if (id === 'ios-performance') return iosPerformanceCard();
   if (id === 'calculator') return calculatorCard();
   if (id === 'performance-monitor') return performanceMonitorCard();
   if (id === 'weak-network') return weakNetworkCard();
@@ -458,6 +482,16 @@ function bindCardActions() {
       toast(error.message || '无法打开手机投屏窗口');
     }
   });
+  const iosMirror = $('[data-open-ios-mirror]');
+  iosMirror?.addEventListener('click', async (event) => {
+    if (state.dragOccurred || event.target.closest('.module-menu')) return;
+    try {
+      if (!window.testCat?.iosMirror) throw new Error('请通过本地预览入口运行 Test cat');
+      await window.testCat.iosMirror.openWindow();
+    } catch (error) {
+      toast(error.message || '无法打开 iOS 投屏窗口');
+    }
+  });
   const calculator = $('[data-open-calculator]');
   calculator?.addEventListener('click', async () => {
     if (state.dragOccurred) return;
@@ -475,7 +509,17 @@ function bindCardActions() {
       if (!window.testCat?.performanceMonitor) throw new Error('请通过本地预览入口运行 Test cat');
       await window.testCat.performanceMonitor.openWindow();
     } catch (error) {
-      toast(error.message || '无法打开性能监控窗口');
+      toast(error.message || '无法打开安卓性能监控窗口');
+    }
+  });
+  const iosPerformance = $('[data-open-ios-performance]');
+  iosPerformance?.addEventListener('click', async () => {
+    if (state.dragOccurred) return;
+    try {
+      if (!window.testCat?.iosPerformance) throw new Error('请通过本地预览入口运行 Test cat');
+      await window.testCat.iosPerformance.openWindow();
+    } catch (error) {
+      toast(error.message || '无法打开 iOS 性能监控窗口');
     }
   });
   const weakNetwork = $('[data-open-weak-network]');
