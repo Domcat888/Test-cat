@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { createPerformanceWorkbook } = require('../src/android-performance-xlsx');
+const { createPerformanceComparisonWorkbook, createPerformanceWorkbook } = require('../src/android-performance-xlsx');
 const { parseXlsx, unzipEntries } = require('../src/file-compare-service');
 
 test('creates a real XLSX workbook with summary, samples, and events', () => {
@@ -17,4 +17,19 @@ test('creates a real XLSX workbook with summary, samples, and events', () => {
   assert.equal(workbook.sheets[1].cells.D2.value, '20');
   assert.equal(workbook.sheets[1].cells.E2.value, '1');
   assert.equal(workbook.sheets[0].cells.D3.value, '1');
+});
+
+test('creates a real XLSX comparison workbook with both raw sample sheets', () => {
+  const timestamp = Date.now();
+  const buffer = createPerformanceComparisonWorkbook(
+    { name: '基准', samples: [{ timestamp, elapsed: 1, cpuUsage: 20, downloadSpeed: 1024 * 1024 }] },
+    { name: '目标', samples: [{ timestamp, elapsed: 1, cpuUsage: 30, downloadSpeed: 2 * 1024 * 1024 }] }
+  );
+  const workbook = parseXlsx(buffer);
+  assert.deepEqual(workbook.sheets.map((sheet) => sheet.name), ['对比摘要', '基准原始采样', '目标原始采样']);
+  assert.equal(workbook.sheets[0].cells.C2.value, '20');
+  assert.equal(workbook.sheets[0].cells.D2.value, '30');
+  assert.equal(workbook.sheets[0].cells.E2.value, '50');
+  assert.equal(workbook.sheets[1].cells.D2.value, '20');
+  assert.equal(workbook.sheets[2].cells.D2.value, '30');
 });

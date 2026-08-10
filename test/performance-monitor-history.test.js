@@ -45,3 +45,23 @@ test('migrates legacy renderer reports once', async (context) => {
   assert.equal((await history.migrateReports(legacy)).imported, 1);
   assert.equal((await history.migrateReports(legacy)).imported, 0);
 });
+
+test('Android history write queue recovers after a failed write', async (context) => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'test-cat-android-history-retry-'));
+  context.after(() => fs.rm(root, { recursive: true, force: true }));
+  const history = new PerformanceMonitorHistory(root);
+  const atomicWrite = history.atomicWrite.bind(history);
+  let failIndex = true;
+  history.atomicWrite = async (...args) => {
+    if (failIndex && args[0] === history.indexPath) {
+      failIndex = false;
+      throw new Error('simulated disk failure');
+    }
+    return atomicWrite(...args);
+  };
+  const report = { config: { serial: 'SERIAL', metrics: ['cpu'] }, samples: [] };
+  await assert.rejects(history.saveReport(report), /simulated disk failure/);
+  const saved = await history.saveReport(report);
+  assert.equal((await history.getReport(saved.id)).type, 'android-performance-report');
+  assert.equal((await history.listReports()).length, 1);
+});

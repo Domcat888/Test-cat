@@ -3,6 +3,7 @@ const path = require('node:path');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const { Readable } = require('node:stream');
+const { androidAdbCandidates, resolveAndroidAdb } = require('./android-adb-runtime');
 
 const execFileAsync = promisify(execFile);
 
@@ -157,7 +158,7 @@ function formatDeviceReport(info) {
 }
 
 class MobileMirrorService {
-  constructor({ appPath, onStatus }) {
+  constructor({ appPath, onStatus, runtimeRoots = [], packaged = false }) {
     this.appPath = appPath;
     this.onStatus = onStatus;
     this.streamPort = null;
@@ -165,6 +166,9 @@ class MobileMirrorService {
     this.session = null;
     this.modulesPromise = null;
     this.adbPath = null;
+    this.adbSource = null;
+    this.runtimeRoots = runtimeRoots;
+    this.packaged = Boolean(packaged);
   }
 
   async loadModules() {
@@ -205,32 +209,22 @@ class MobileMirrorService {
   }
 
   getAdbCandidates() {
-    const executable = process.platform === 'win32' ? 'adb.exe' : 'adb';
-    const folder = `${process.platform}-${process.arch}`;
-    return [
-      process.env.ADB_PATH,
-      path.join(process.resourcesPath || '', 'platform-tools', folder, executable),
-      path.join(this.appPath, 'resources', 'platform-tools', folder, executable),
-      executable
-    ].filter(Boolean);
+    return androidAdbCandidates({ runtimeRoots: this.runtimeRoots, appPath: this.appPath });
   }
 
   async startAdbServer() {
-    let lastError;
-    const candidates = [...new Set([this.adbPath, ...this.getAdbCandidates()].filter(Boolean))];
-    for (const candidate of candidates) {
-      try {
-        await execFileAsync(candidate, ['start-server'], { timeout: 15000, windowsHide: true });
-        this.adbPath = candidate;
-        return candidate;
-      } catch (error) {
-        lastError = error;
-        if (error.code !== 'ENOENT') break;
-      }
-    }
-    const error = new Error('内置 Android 调试引擎缺失或损坏，请重新安装 Test cat。');
-    error.cause = lastError;
-    throw error;
+    if (this.adbPath) return this.adbPath;
+    const message = this.packaged
+      ? '内置 Android 调试引擎缺失或损坏，请重新安装 Test cat。'
+      : 'Android 调试引擎尚未准备，请运行 npm run prepare:android-runtime。';
+    const resolved = await resolveAndroidAdb({
+      candidates: this.getAdbCandidates(),
+      errorMessage: message,
+      sourceOptions: { runtimeRoots: this.runtimeRoots, appPath: this.appPath, resourcesPath: process.resourcesPath || '', environment: process.env }
+    });
+    this.adbPath = resolved.path;
+    this.adbSource = resolved.source;
+    return this.adbPath;
   }
 
   async runAdb(serial, args, timeout = 15000) {

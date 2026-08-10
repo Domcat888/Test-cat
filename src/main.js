@@ -23,7 +23,7 @@ const { IosPerformanceService } = require('./ios-performance-service');
 const { IosPerformanceHistory } = require('./ios-performance-history');
 const { PerformanceMonitorService } = require('./performance-monitor-service');
 const { PerformanceMonitorHistory } = require('./performance-monitor-history');
-const { createPerformanceWorkbook } = require('./android-performance-xlsx');
+const { createPerformanceComparisonWorkbook, createPerformanceWorkbook } = require('./android-performance-xlsx');
 const { WeakNetworkService } = require('./weak-network-service');
 const { FileCompareService } = require('./file-compare-service');
 const { LogAnalysisService } = require('./log-analysis-service');
@@ -1633,6 +1633,26 @@ function setupIpc() {
     await fsp.writeFile(result.filePath, createPerformanceWorkbook(report));
     return { path: result.filePath };
   });
+  ipcMain.handle('performance-monitor:export-comparison-xlsx', async (event, payload = {}) => {
+    const leftId = String(payload.leftId || '');
+    const rightId = String(payload.rightId || '');
+    if (!leftId || !rightId || leftId === rightId) throw new Error('请选择两份不同的性能报告。');
+    const [left, right] = await Promise.all([
+      performanceMonitorHistory.getReport(leftId),
+      performanceMonitorHistory.getReport(rightId)
+    ]);
+    if (!left || !right) throw new Error('对比报告不存在或已经损坏。');
+    const senderWindow = BrowserWindow.fromWebContents(event.sender);
+    const safeName = `性能对比_${left.name || '基准'}_vs_${right.name || '目标'}`.replace(/[\\/:*?"<>|]/g, '_').slice(0, 120);
+    const result = await dialog.showSaveDialog(senderWindow || performanceMonitorWindow || mainWindow, {
+      title: '导出安卓性能对比 Excel',
+      defaultPath: `${safeName}.xlsx`,
+      filters: [{ name: 'Excel 工作簿', extensions: ['xlsx'] }]
+    });
+    if (result.canceled || !result.filePath) return null;
+    await fsp.writeFile(result.filePath, createPerformanceComparisonWorkbook(left, right));
+    return { path: result.filePath };
+  });
   ipcMain.handle('ios-performance:open-window', () => {
     createIosPerformanceWindow();
     return true;
@@ -2511,8 +2531,14 @@ app.whenReady().then(() => {
   captureSettings = loadCaptureSettings();
   companionPetSettings = loadCompanionPetSettings();
   aiSettings = loadAiSettings();
+  const androidRuntimeRoots = [
+    path.join(process.resourcesPath, 'platform-tools'),
+    path.join(app.getAppPath(), 'resources', 'platform-tools')
+  ];
   mobileMirrorService = new MobileMirrorService({
     appPath: app.getAppPath(),
+    runtimeRoots: androidRuntimeRoots,
+    packaged: app.isPackaged,
     onStatus: (status) => {
       for (const window of [mainWindow, mobileMirrorWindow]) {
         if (window && !window.isDestroyed()) window.webContents.send('mobile-mirror:status', status);
@@ -2543,10 +2569,7 @@ app.whenReady().then(() => {
   });
   iosPerformanceHistory = new IosPerformanceHistory(path.join(app.getPath('userData'), 'ios-performance'));
   performanceMonitorService = new PerformanceMonitorService({
-    runtimeRoots: [
-      path.join(process.resourcesPath, 'platform-tools'),
-      path.join(app.getAppPath(), 'resources', 'platform-tools')
-    ],
+    runtimeRoots: androidRuntimeRoots,
     packaged: app.isPackaged,
     onSample: (sample) => {
       if (performanceMonitorWindow && !performanceMonitorWindow.isDestroyed()) performanceMonitorWindow.webContents.send('performance-monitor:sample', sample);
@@ -2558,6 +2581,8 @@ app.whenReady().then(() => {
   performanceMonitorHistory = new PerformanceMonitorHistory(path.join(app.getPath('userData'), 'android-performance'));
   weakNetworkService = new WeakNetworkService({
     appPath: app.getAppPath(),
+    runtimeRoots: androidRuntimeRoots,
+    packaged: app.isPackaged,
     onStatus: (status) => {
       if (weakNetworkWindow && !weakNetworkWindow.isDestroyed()) weakNetworkWindow.webContents.send('weak-network:status', status);
     },
@@ -2571,6 +2596,9 @@ app.whenReady().then(() => {
   });
   logAnalysisService = new LogAnalysisService({
     dialog,
+    appPath: app.getAppPath(),
+    runtimeRoots: androidRuntimeRoots,
+    packaged: app.isPackaged,
     getWindow: () => logAnalysisWindow && !logAnalysisWindow.isDestroyed() ? logAnalysisWindow : mainWindow,
     onLogs: (records) => {
       if (logAnalysisWindow && !logAnalysisWindow.isDestroyed()) logAnalysisWindow.webContents.send('log-analysis:logs', records);
@@ -2582,6 +2610,8 @@ app.whenReady().then(() => {
   appPackageService = new AppPackageService({
     dialog,
     appPath: app.getAppPath(),
+    runtimeRoots: androidRuntimeRoots,
+    packaged: app.isPackaged,
     getWindow: () => appPackageWindow && !appPackageWindow.isDestroyed() ? appPackageWindow : mainWindow
   });
   aiTestAssistantService = new AiTestAssistantService({

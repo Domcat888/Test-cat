@@ -135,18 +135,24 @@ function summaryRows(report, keys) {
   return rows;
 }
 
-function createPerformanceWorkbook(report) {
-  if (!report || !Array.isArray(report.samples)) throw new Error('安卓性能报告格式不正确。');
-  const keys = metricKeys(report);
+function isoTimestamp(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+}
+
+function sampleRows(report, keys = metricKeys(report)) {
   const samples = [['时间戳', '测试秒数', 'App 包名', ...keys.map((key) => `${METRICS[key][0]} (${METRICS[key][1]})`)]];
-  for (const sample of report.samples) samples.push([new Date(sample.timestamp).toISOString(), sample.elapsed, sample.packageName || '', ...keys.map((key) => key === 'startupTime' ? report.startupTime ?? '' : normalize(key, sample[key]))]);
+  for (const sample of report.samples || []) samples.push([isoTimestamp(sample.timestamp), sample.elapsed, sample.packageName || '', ...keys.map((key) => key === 'startupTime' ? report.startupTime ?? '' : normalize(key, sample[key]))]);
+  return samples;
+}
+
+function eventRows(report) {
   const events = [['时间', '等级', '类型', '事件', 'App', '指标', '数值', '阈值']];
-  for (const event of report.events || []) events.push([new Date(event.timestamp).toISOString(), event.level || 'info', event.type || 'event', event.label || '', event.packageName || '', event.metric ? METRICS[event.metric]?.[0] || event.metric : '', event.value ?? '', event.threshold ?? '']);
-  const sheets = [
-    { name: '指标摘要', rows: summaryRows(report, keys) },
-    { name: '原始采样', rows: samples },
-    { name: '测试事件', rows: events }
-  ];
+  for (const event of report.events || []) events.push([isoTimestamp(event.timestamp), event.level || 'info', event.type || 'event', event.label || '', event.packageName || '', event.metric ? METRICS[event.metric]?.[0] || event.metric : '', event.value ?? '', event.threshold ?? '']);
+  return events;
+}
+
+function createWorkbook(sheets) {
   const contentTypes = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>${sheets.map((_sheet, index) => `<Override PartName="/xl/worksheets/sheet${index + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')}</Types>`;
   const workbook = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>${sheets.map((sheet, index) => `<sheet name="${xml(sheet.name)}" sheetId="${index + 1}" r:id="rId${index + 1}"/>`).join('')}</sheets></workbook>`;
   const workbookRels = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${sheets.map((_sheet, index) => `<Relationship Id="rId${index + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${index + 1}.xml"/>`).join('')}<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`;
@@ -161,4 +167,55 @@ function createPerformanceWorkbook(report) {
   ]);
 }
 
-module.exports = { createPerformanceWorkbook, __test: { createZip, metricKeys, worksheet } };
+function createPerformanceWorkbook(report) {
+  if (!report || !Array.isArray(report.samples)) throw new Error('安卓性能报告格式不正确。');
+  const keys = metricKeys(report);
+  return createWorkbook([
+    { name: '指标摘要', rows: summaryRows(report, keys) },
+    { name: '原始采样', rows: sampleRows(report, keys) },
+    { name: '测试事件', rows: eventRows(report) }
+  ]);
+}
+
+function metricStats(report, key) {
+  const values = key === 'startupTime'
+    ? [Number(report.startupTime)].filter(Number.isFinite)
+    : (report.samples || []).map((sample) => normalize(key, sample[key])).filter(Number.isFinite);
+  return report.analysis?.metrics?.[key] || summarize(values);
+}
+
+function comparisonRows(left, right) {
+  const keys = [...new Set([...metricKeys(left), ...metricKeys(right)])];
+  const rows = [['指标', '单位', '基准平均', '目标平均', '变化 (%)', '基准最小', '目标最小', '基准最大', '目标最大', '基准样本', '目标样本']];
+  for (const key of keys) {
+    const leftStats = metricStats(left, key);
+    const rightStats = metricStats(right, key);
+    const leftAverage = Number(leftStats.avg);
+    const rightAverage = Number(rightStats.avg);
+    const delta = Number.isFinite(leftAverage) && leftAverage !== 0 && Number.isFinite(rightAverage)
+      ? (rightAverage - leftAverage) / Math.abs(leftAverage) * 100
+      : '';
+    rows.push([
+      METRICS[key][0], METRICS[key][1],
+      leftStats.avg ?? '', rightStats.avg ?? '', delta,
+      leftStats.min ?? '', rightStats.min ?? '', leftStats.max ?? '', rightStats.max ?? '',
+      leftStats.count ?? '', rightStats.count ?? ''
+    ]);
+  }
+  return rows;
+}
+
+function createPerformanceComparisonWorkbook(left, right) {
+  if (!left || !right || !Array.isArray(left.samples) || !Array.isArray(right.samples)) throw new Error('安卓性能对比报告格式不正确。');
+  return createWorkbook([
+    { name: '对比摘要', rows: comparisonRows(left, right) },
+    { name: '基准原始采样', rows: sampleRows(left) },
+    { name: '目标原始采样', rows: sampleRows(right) }
+  ]);
+}
+
+module.exports = {
+  createPerformanceComparisonWorkbook,
+  createPerformanceWorkbook,
+  __test: { comparisonRows, createZip, metricKeys, worksheet }
+};

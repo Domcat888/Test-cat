@@ -73,6 +73,12 @@ class PerformanceMonitorHistory {
     await this.atomicWrite(this.indexPath, JSON.stringify(this.index));
   }
 
+  enqueueWrite(task) {
+    const operation = this.writeQueue.catch(() => {}).then(task);
+    this.writeQueue = operation;
+    return operation;
+  }
+
   normalizeReport(payload, options = {}) {
     if (!payload || typeof payload !== 'object' || !payload.config || !Array.isArray(payload.samples)) throw new Error('安卓性能报告格式不正确。');
     const id = randomUUID();
@@ -102,15 +108,23 @@ class PerformanceMonitorHistory {
 
   async saveReport(payload, options = {}) {
     const report = this.normalizeReport(payload, options);
-    this.writeQueue = this.writeQueue.then(async () => {
+    await this.enqueueWrite(async () => {
       const index = await this.loadIndex();
       await this.atomicWrite(this.reportPath(report.id), JSON.stringify(report));
-      index.reports.unshift(reportSummary(report));
-      const removed = index.reports.splice(MAX_REPORTS);
-      await this.persistIndex();
+      const previousReports = index.reports;
+      const summary = reportSummary(report);
+      if (options.legacyId) summary.legacyId = text(options.legacyId, 200);
+      index.reports = [summary, ...previousReports].slice(0, MAX_REPORTS);
+      const removed = previousReports.slice(Math.max(0, MAX_REPORTS - 1));
+      try {
+        await this.persistIndex();
+      } catch (error) {
+        index.reports = previousReports;
+        await fs.rm(this.reportPath(report.id), { force: true }).catch(() => {});
+        throw error;
+      }
       await Promise.allSettled(removed.map((item) => fs.rm(this.reportPath(item.id), { force: true })));
     });
-    await this.writeQueue;
     return reportSummary(report);
   }
 
@@ -122,14 +136,10 @@ class PerformanceMonitorHistory {
     for (const source of reports.slice(0, MAX_REPORTS)) {
       const legacyId = text(source?.id, 200);
       if (legacyId && existingLegacyIds.has(legacyId)) continue;
-      const summary = await this.saveReport({ ...source, id: undefined }, { migrated: true });
-      const savedIndex = await this.loadIndex();
-      const entry = savedIndex.reports.find((item) => item.id === summary.id);
-      if (entry) entry.legacyId = legacyId || undefined;
+      await this.saveReport({ ...source, id: undefined }, { migrated: true, legacyId });
       if (legacyId) existingLegacyIds.add(legacyId);
       imported += 1;
     }
-    if (imported) await this.persistIndex();
     return { imported };
   }
 
@@ -149,13 +159,21 @@ class PerformanceMonitorHistory {
   }
 
   async deleteReport(id) {
-    const index = await this.loadIndex();
-    const before = index.reports.length;
-    index.reports = index.reports.filter((item) => item.id !== id);
-    if (index.reports.length === before) return false;
-    await this.persistIndex();
-    await fs.rm(this.reportPath(id), { force: true });
-    return true;
+    return this.enqueueWrite(async () => {
+      const index = await this.loadIndex();
+      const before = index.reports.length;
+      const previousReports = index.reports;
+      index.reports = index.reports.filter((item) => item.id !== id);
+      if (index.reports.length === before) return false;
+      try {
+        await this.persistIndex();
+      } catch (error) {
+        index.reports = previousReports;
+        throw error;
+      }
+      await fs.rm(this.reportPath(id), { force: true }).catch(() => {});
+      return true;
+    });
   }
 }
 

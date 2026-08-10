@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { execFile, spawn } = require('node:child_process');
 const { promisify } = require('node:util');
+const { androidAdbCandidates, resolveAndroidAdb } = require('./android-adb-runtime');
 
 const execFileAsync = promisify(execFile);
 const MAX_RECORDS = 100000;
@@ -96,12 +97,16 @@ function recordMatchesFilter(record, filter = {}) {
 }
 
 class LogAnalysisService {
-  constructor({ dialog, getWindow, onLogs, onStatus }) {
+  constructor({ dialog, getWindow, onLogs, onStatus, appPath = '', runtimeRoots = [], packaged = false }) {
     this.dialog = dialog;
     this.getWindow = getWindow;
     this.onLogs = onLogs;
     this.onStatus = onStatus;
-    this.adbPath = process.env.ADB_PATH || (process.platform === 'win32' ? 'adb.exe' : 'adb');
+    this.appPath = appPath;
+    this.runtimeRoots = runtimeRoots;
+    this.packaged = Boolean(packaged);
+    this.adbPath = null;
+    this.adbSource = null;
     this.session = null;
     this.processMap = new Map();
     this.batch = [];
@@ -115,16 +120,24 @@ class LogAnalysisService {
   }
 
   async adb(args, timeout = 15000) {
-    const { stdout } = await execFileAsync(this.adbPath, args, { timeout, windowsHide: true, maxBuffer: 16 * 1024 * 1024 });
+    const adbPath = this.adbPath || await this.ensureAdb();
+    const { stdout } = await execFileAsync(adbPath, args, { timeout, windowsHide: true, maxBuffer: 16 * 1024 * 1024 });
     return stdout;
   }
 
   async ensureAdb() {
-    try {
-      await this.adb(['start-server']);
-    } catch (error) {
-      throw new Error(error.code === 'ENOENT' ? '未找到 ADB，请先安装 Android Platform Tools。' : `ADB 启动失败：${error.message}`);
-    }
+    if (this.adbPath) return this.adbPath;
+    const message = this.packaged
+      ? '内置 Android 调试引擎缺失或损坏，请重新安装 Test cat。'
+      : 'Android 调试引擎尚未准备，请运行 npm run prepare:android-runtime。';
+    const resolved = await resolveAndroidAdb({
+      candidates: androidAdbCandidates({ runtimeRoots: this.runtimeRoots, appPath: this.appPath }),
+      errorMessage: message,
+      sourceOptions: { runtimeRoots: this.runtimeRoots, appPath: this.appPath, resourcesPath: process.resourcesPath || '', environment: process.env }
+    });
+    this.adbPath = resolved.path;
+    this.adbSource = resolved.source;
+    return this.adbPath;
   }
 
   async listDevices() {

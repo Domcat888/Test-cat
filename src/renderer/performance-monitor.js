@@ -509,10 +509,14 @@ function drawComparison() {
   });
 }
 
-function exportComparison() {
+async function exportComparison() {
   if (!state.comparison) return;
-  download(reportDocument(state.comparison.left, state.comparison), `性能对比_${state.comparison.left.name}_vs_${state.comparison.right.name}.xls`, 'application/vnd.ms-excel;charset=utf-8', true);
-  toast('对比 Excel 已导出');
+  try {
+    const result = await api.exportComparisonXlsx(state.comparison.left.id, state.comparison.right.id);
+    if (result) toast('对比 Excel 已导出');
+  } catch (error) {
+    toast(error.message || String(error));
+  }
 }
 
 function switchPage(page) {

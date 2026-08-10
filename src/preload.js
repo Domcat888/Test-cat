@@ -198,6 +198,7 @@ contextBridge.exposeInMainWorld('testCat', {
     getReport: (id) => ipcRenderer.invoke('performance-monitor:get-report', id),
     deleteReport: (id) => ipcRenderer.invoke('performance-monitor:delete-report', id),
     exportXlsx: (id) => ipcRenderer.invoke('performance-monitor:export-xlsx', id),
+    exportComparisonXlsx: (leftId, rightId) => ipcRenderer.invoke('performance-monitor:export-comparison-xlsx', { leftId, rightId }),
     onSample: (listener) => {
       performanceSampleListeners.add(listener);
       return () => performanceSampleListeners.delete(listener);

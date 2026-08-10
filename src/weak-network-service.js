@@ -7,6 +7,7 @@ const crypto = require('node:crypto');
 const { Transform } = require('node:stream');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
+const { androidAdbCandidates, resolveAndroidAdb } = require('./android-adb-runtime');
 
 const execFileAsync = promisify(execFile);
 const AGENT_PACKAGE = 'hev.sockstun';
@@ -373,11 +374,14 @@ class WeakNetworkProxy {
 }
 
 class WeakNetworkService {
-  constructor({ appPath, onStatus, onStats }) {
+  constructor({ appPath, onStatus, onStats, runtimeRoots = [], packaged = false }) {
     this.appPath = appPath;
     this.onStatus = onStatus;
     this.onStats = onStats;
-    this.adbPath = process.env.ADB_PATH || (process.platform === 'win32' ? 'adb.exe' : 'adb');
+    this.runtimeRoots = runtimeRoots;
+    this.packaged = Boolean(packaged);
+    this.adbPath = null;
+    this.adbSource = null;
     this.resolvedAgentPath = null;
     this.session = null;
     this.operationId = null;
@@ -388,13 +392,24 @@ class WeakNetworkService {
   }
 
   async adb(args, timeout = 30000) {
-    const { stdout } = await execFileAsync(this.adbPath, args, { timeout, windowsHide: true, maxBuffer: 8 * 1024 * 1024 });
+    const adbPath = this.adbPath || await this.ensureAdb();
+    const { stdout } = await execFileAsync(adbPath, args, { timeout, windowsHide: true, maxBuffer: 8 * 1024 * 1024 });
     return stdout;
   }
 
   async ensureAdb() {
-    try { await this.adb(['start-server']); }
-    catch (error) { throw new Error(error.code === 'ENOENT' ? '未找到 ADB，请先安装 Android Platform Tools。' : `ADB 启动失败：${error.message}`); }
+    if (this.adbPath) return this.adbPath;
+    const message = this.packaged
+      ? '内置 Android 调试引擎缺失或损坏，请重新安装 Test cat。'
+      : 'Android 调试引擎尚未准备，请运行 npm run prepare:android-runtime。';
+    const resolved = await resolveAndroidAdb({
+      candidates: androidAdbCandidates({ runtimeRoots: this.runtimeRoots, appPath: this.appPath }),
+      errorMessage: message,
+      sourceOptions: { runtimeRoots: this.runtimeRoots, appPath: this.appPath, resourcesPath: process.resourcesPath || '', environment: process.env }
+    });
+    this.adbPath = resolved.path;
+    this.adbSource = resolved.source;
+    return this.adbPath;
   }
 
   async listDevices() {

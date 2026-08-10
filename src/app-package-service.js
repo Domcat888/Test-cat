@@ -4,6 +4,7 @@ const zlib = require('node:zlib');
 const crypto = require('node:crypto');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
+const { androidAdbCandidates, resolveAndroidAdb } = require('./android-adb-runtime');
 
 const execFileAsync = promisify(execFile);
 
@@ -534,57 +535,35 @@ function formatBytes(value) {
 }
 
 class AppPackageService {
-  constructor({ dialog, getWindow, appPath } = {}) {
+  constructor({ dialog, getWindow, appPath, runtimeRoots = [], packaged = false } = {}) {
     this.dialog = dialog;
     this.getWindow = getWindow || (() => null);
     this.appPath = appPath || process.cwd();
     this.adbPath = null;
+    this.adbSource = null;
+    this.runtimeRoots = runtimeRoots;
+    this.packaged = Boolean(packaged);
   }
 
   getAdbCandidates() {
-    const executable = process.platform === 'win32' ? 'adb.exe' : 'adb';
-    const platformDir = process.platform + '-' + process.arch;
-    const resourcesPath = process.resourcesPath || path.dirname(this.appPath);
-    const androidHomes = [process.env.ANDROID_HOME, process.env.ANDROID_SDK_ROOT].filter(Boolean);
-    const home = process.env.HOME || process.env.USERPROFILE || '';
-    const commonSdkPaths = process.platform === 'win32'
-      ? [
-          process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'Android', 'Sdk'),
-          process.env.USERPROFILE && path.join(process.env.USERPROFILE, 'AppData', 'Local', 'Android', 'Sdk')
-        ].filter(Boolean)
-      : [
-          home && path.join(home, 'Library', 'Android', 'sdk'),
-          home && path.join(home, 'Android', 'Sdk')
-        ].filter(Boolean);
-    const candidates = [
-      process.env.ADB_PATH,
-      path.join(resourcesPath, 'platform-tools', platformDir, executable),
-      path.join(resourcesPath, 'app.asar.unpacked', 'resources', 'platform-tools', platformDir, executable),
-      path.join(this.appPath, 'resources', 'platform-tools', platformDir, executable),
-      ...androidHomes.map((sdkPath) => path.join(sdkPath, 'platform-tools', executable)),
-      ...commonSdkPaths.map((sdkPath) => path.join(sdkPath, 'platform-tools', executable)),
-      ...(process.platform === 'darwin' ? ['/opt/homebrew/bin/adb', '/usr/local/bin/adb'] : []),
-      executable
-    ].filter(Boolean);
-    return [...new Set(candidates)];
+    return androidAdbCandidates({ runtimeRoots: this.runtimeRoots, appPath: this.appPath });
   }
 
   async resolveAdbPath() {
     if (this.adbPath) return this.adbPath;
-    let lastError = null;
-    for (const candidate of this.getAdbCandidates()) {
-      try {
-        await execFileAsync(candidate, ['version'], { timeout: 8000, windowsHide: true });
-        this.adbPath = candidate;
-        return candidate;
-      } catch (error) {
-        lastError = error;
-        if (error.code && error.code !== 'ENOENT') break;
-      }
-    }
-    const error = new Error('未找到可用的 ADB。请安装 Android Platform Tools，或在系统环境变量中配置 ADB_PATH。');
-    error.cause = lastError;
-    throw error;
+    const message = this.packaged
+      ? '内置 Android 调试引擎缺失或损坏，请重新安装 Test cat。'
+      : '未找到可用的 ADB。请运行 npm run prepare:android-runtime，或安装 Android Platform Tools。';
+    const resolved = await resolveAndroidAdb({
+      candidates: this.getAdbCandidates(),
+      probeArgs: ['version'],
+      timeout: 8000,
+      errorMessage: message,
+      sourceOptions: { runtimeRoots: this.runtimeRoots, appPath: this.appPath, resourcesPath: process.resourcesPath || '', environment: process.env }
+    });
+    this.adbPath = resolved.path;
+    this.adbSource = resolved.source;
+    return this.adbPath;
   }
 
   async adb(args, timeout = 30000) {

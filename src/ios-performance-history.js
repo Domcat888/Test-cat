@@ -5,6 +5,7 @@ const { randomUUID } = require('node:crypto');
 const MAX_REPORTS = 250;
 const MAX_LOGS = 1000;
 const MAX_SAMPLES_PER_REPORT = 86400;
+const UUID_PATTERN = /^[a-f0-9-]{36}$/i;
 
 function clone(value) {
   return value == null ? value : JSON.parse(JSON.stringify(value));
@@ -33,48 +34,133 @@ function reportSummary(report) {
   };
 }
 
+function logSummary(log) {
+  const { content, ...summary } = log;
+  return clone(summary);
+}
+
 class IosPerformanceHistory {
   constructor(rootPath) {
     this.rootPath = rootPath;
-    this.filePath = path.join(rootPath, 'history.json');
-    this.data = null;
+    this.legacyPath = path.join(rootPath, 'history.json');
+    this.indexPath = path.join(rootPath, 'index.json');
+    this.reportRoot = path.join(rootPath, 'reports');
+    this.logRoot = path.join(rootPath, 'logs');
+    this.index = null;
+    this.loadPromise = null;
     this.writeQueue = Promise.resolve();
   }
 
-  async load() {
-    if (this.data) return this.data;
+  enqueueWrite(task) {
+    const operation = this.writeQueue.catch(() => {}).then(task);
+    this.writeQueue = operation;
+    return operation;
+  }
+
+  async atomicWrite(filePath, content) {
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    const temporary = `${filePath}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`;
+    await fs.writeFile(temporary, content, 'utf8');
     try {
-      const parsed = JSON.parse(await fs.readFile(this.filePath, 'utf8'));
-      this.data = {
-        version: 1,
+      await fs.rename(temporary, filePath);
+    } catch {
+      await fs.rm(filePath, { force: true });
+      await fs.rename(temporary, filePath);
+    }
+  }
+
+  reportPath(id) {
+    if (!UUID_PATTERN.test(String(id || ''))) throw new Error('报告编号无效。');
+    return path.join(this.reportRoot, `${id}.json`);
+  }
+
+  logPath(id) {
+    if (!UUID_PATTERN.test(String(id || ''))) throw new Error('日志编号无效。');
+    return path.join(this.logRoot, `${id}.json`);
+  }
+
+  async persistIndex() {
+    await this.atomicWrite(this.indexPath, JSON.stringify(this.index));
+  }
+
+  async loadIndex() {
+    if (this.index) return this.index;
+    if (!this.loadPromise) {
+      this.loadPromise = this.initializeIndex().finally(() => {
+        this.loadPromise = null;
+      });
+    }
+    return this.loadPromise;
+  }
+
+  async initializeIndex() {
+    try {
+      const parsed = JSON.parse(await fs.readFile(this.indexPath, 'utf8'));
+      this.index = {
+        version: 2,
         reports: Array.isArray(parsed.reports) ? parsed.reports : [],
         logs: Array.isArray(parsed.logs) ? parsed.logs : []
       };
-    } catch {
-      this.data = { version: 1, reports: [], logs: [] };
+      return this.index;
+    } catch (error) {
+      if (error.code !== 'ENOENT') {
+        this.index = { version: 2, reports: [], logs: [] };
+        return this.index;
+      }
     }
-    return this.data;
+    return this.migrateLegacyHistory();
   }
 
-  async persist() {
-    const snapshot = JSON.stringify(this.data);
-    this.writeQueue = this.writeQueue.then(async () => {
-      await fs.mkdir(this.rootPath, { recursive: true });
-      const temporary = `${this.filePath}.${process.pid}.tmp`;
-      await fs.writeFile(temporary, snapshot, 'utf8');
-      try {
-        await fs.rename(temporary, this.filePath);
-      } catch {
-        await fs.rm(this.filePath, { force: true });
-        await fs.rename(temporary, this.filePath);
-      }
-    });
-    return this.writeQueue;
+  async migrateLegacyHistory() {
+    let legacy;
+    try {
+      legacy = JSON.parse(await fs.readFile(this.legacyPath, 'utf8'));
+    } catch {
+      this.index = { version: 2, reports: [], logs: [] };
+      return this.index;
+    }
+
+    const reports = [];
+    const logs = [];
+    const reportIds = new Set();
+    const logIds = new Set();
+    for (const source of Array.isArray(legacy.reports) ? legacy.reports : []) {
+      const report = clone(source);
+      let id = UUID_PATTERN.test(String(report?.id || '')) ? report.id : randomUUID();
+      while (reportIds.has(id)) id = randomUUID();
+      reportIds.add(id);
+      report.id = id;
+      await this.atomicWrite(this.reportPath(id), JSON.stringify(report));
+      reports.push(reportSummary(report));
+    }
+    for (const source of Array.isArray(legacy.logs) ? legacy.logs : []) {
+      const log = clone(source);
+      let id = UUID_PATTERN.test(String(log?.id || '')) ? log.id : randomUUID();
+      while (logIds.has(id)) id = randomUUID();
+      logIds.add(id);
+      log.id = id;
+      await this.atomicWrite(this.logPath(id), JSON.stringify(log));
+      logs.push(logSummary(log));
+    }
+    this.index = { version: 2, reports, logs, migratedAt: new Date().toISOString() };
+    try {
+      await this.persistIndex();
+    } catch (error) {
+      this.index = null;
+      throw error;
+    }
+    const backupPath = path.join(this.rootPath, 'history.migrated-v1.json');
+    try {
+      await fs.access(backupPath);
+    } catch {
+      try { await fs.rename(this.legacyPath, backupPath); } catch {}
+    }
+    return this.index;
   }
 
   normalizeReport(payload, imported = false) {
     if (!payload || typeof payload !== 'object' || !Array.isArray(payload.samples)) throw new Error('报告格式不正确。');
-    const samples = payload.samples.slice(-MAX_SAMPLES_PER_REPORT);
+    const samples = clone(payload.samples.slice(-MAX_SAMPLES_PER_REPORT));
     return {
       ...clone(payload),
       type: 'ios-performance-report',
@@ -89,31 +175,57 @@ class IosPerformanceHistory {
   }
 
   async saveReport(payload, { imported = false } = {}) {
-    const data = await this.load();
     const report = this.normalizeReport(payload, imported);
-    data.reports.unshift(report);
-    data.reports = data.reports.slice(0, MAX_REPORTS);
-    await this.persist();
-    return reportSummary(report);
+    return this.enqueueWrite(async () => {
+      const index = await this.loadIndex();
+      await this.atomicWrite(this.reportPath(report.id), JSON.stringify(report));
+      const summary = reportSummary(report);
+      const previousReports = index.reports;
+      index.reports = [summary, ...previousReports].slice(0, MAX_REPORTS);
+      const removed = previousReports.slice(Math.max(0, MAX_REPORTS - 1));
+      try {
+        await this.persistIndex();
+      } catch (error) {
+        index.reports = previousReports;
+        await fs.rm(this.reportPath(report.id), { force: true }).catch(() => {});
+        throw error;
+      }
+      await Promise.allSettled(removed.map((item) => fs.rm(this.reportPath(item.id), { force: true })));
+      return clone(summary);
+    });
   }
 
   async listReports() {
-    const data = await this.load();
-    return data.reports.map(reportSummary);
+    const index = await this.loadIndex();
+    return clone(index.reports);
   }
 
   async getReport(id) {
-    const data = await this.load();
-    return clone(data.reports.find((item) => item.id === id) || null);
+    const index = await this.loadIndex();
+    if (!index.reports.some((item) => item.id === id)) return null;
+    try {
+      return JSON.parse(await fs.readFile(this.reportPath(id), 'utf8'));
+    } catch {
+      return null;
+    }
   }
 
   async deleteReport(id) {
-    const data = await this.load();
-    const before = data.reports.length;
-    data.reports = data.reports.filter((item) => item.id !== id);
-    if (data.reports.length === before) return false;
-    await this.persist();
-    return true;
+    return this.enqueueWrite(async () => {
+      const index = await this.loadIndex();
+      const before = index.reports.length;
+      const previousReports = index.reports;
+      index.reports = index.reports.filter((item) => item.id !== id);
+      if (index.reports.length === before) return false;
+      try {
+        await this.persistIndex();
+      } catch (error) {
+        index.reports = previousReports;
+        throw error;
+      }
+      await fs.rm(this.reportPath(id), { force: true }).catch(() => {});
+      return true;
+    });
   }
 
   normalizeLog(record) {
@@ -136,36 +248,59 @@ class IosPerformanceHistory {
   }
 
   async saveLogs(records) {
-    const data = await this.load();
-    const inserted = [];
-    const existing = new Set(data.logs.map((item) => `${item.deviceSerial}\n${item.sourcePath}`));
-    for (const source of Array.isArray(records) ? records : []) {
-      const record = this.normalizeLog(source);
-      const key = `${record.deviceSerial}\n${record.sourcePath}`;
-      if (existing.has(key)) continue;
-      existing.add(key);
-      data.logs.unshift(record);
-      inserted.push(record);
-    }
-    if (inserted.length) {
-      data.logs = data.logs.slice(0, MAX_LOGS);
-      await this.persist();
-    }
-    return inserted.map(({ content, ...item }) => clone(item));
+    const normalized = (Array.isArray(records) ? records : []).map((record) => this.normalizeLog(record));
+    return this.enqueueWrite(async () => {
+      const index = await this.loadIndex();
+      const inserted = [];
+      const writtenIds = [];
+      const previousLogs = index.logs;
+      const nextLogs = [...previousLogs];
+      const existing = new Set(index.logs.map((item) => `${item.deviceSerial}\n${item.sourcePath}`));
+      try {
+        for (const record of normalized) {
+          const key = `${record.deviceSerial}\n${record.sourcePath}`;
+          if (existing.has(key)) continue;
+          existing.add(key);
+          await this.atomicWrite(this.logPath(record.id), JSON.stringify(record));
+          writtenIds.push(record.id);
+          const summary = logSummary(record);
+          nextLogs.unshift(summary);
+          inserted.push(summary);
+        }
+        if (inserted.length) {
+          index.logs = nextLogs.slice(0, MAX_LOGS);
+          await this.persistIndex();
+        }
+      } catch (error) {
+        index.logs = previousLogs;
+        await Promise.allSettled(writtenIds.map((id) => fs.rm(this.logPath(id), { force: true })));
+        throw error;
+      }
+      if (inserted.length) {
+        const retained = new Set(index.logs.map((item) => item.id));
+        const removed = previousLogs.filter((item) => !retained.has(item.id));
+        await Promise.allSettled(removed.map((item) => fs.rm(this.logPath(item.id), { force: true })));
+      }
+      return clone(inserted);
+    });
   }
 
   async listLogs({ deviceSerial = '', type = '' } = {}) {
-    const data = await this.load();
-    return data.logs
+    const index = await this.loadIndex();
+    return clone(index.logs
       .filter((item) => !deviceSerial || item.deviceSerial === deviceSerial)
-      .filter((item) => !type || item.type === type)
-      .map(({ content, ...item }) => clone(item));
+      .filter((item) => !type || item.type === type));
   }
 
   async getLog(id) {
-    const data = await this.load();
-    return clone(data.logs.find((item) => item.id === id) || null);
+    const index = await this.loadIndex();
+    if (!index.logs.some((item) => item.id === id)) return null;
+    try {
+      return JSON.parse(await fs.readFile(this.logPath(id), 'utf8'));
+    } catch {
+      return null;
+    }
   }
 }
 
-module.exports = { IosPerformanceHistory, __test: { MAX_SAMPLES_PER_REPORT, reportSummary } };
+module.exports = { IosPerformanceHistory, __test: { MAX_SAMPLES_PER_REPORT, logSummary, reportSummary } };

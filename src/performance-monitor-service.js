@@ -1,15 +1,13 @@
 const { execFile } = require('node:child_process');
-const path = require('node:path');
 const { promisify } = require('node:util');
+const { androidAdbCandidates, resolveAndroidAdb } = require('./android-adb-runtime');
 
 const execFileAsync = promisify(execFile);
 const ALLOWED_METRICS = new Set(['cpu', 'memory', 'gpu', 'network', 'disk', 'app', 'device']);
 const PACKAGE_METRICS = new Set(['cpu', 'memory', 'gpu', 'network', 'app']);
 
 function adbCandidates(runtimeRoots = [], environment = process.env, platform = process.platform, arch = process.arch) {
-  const executable = platform === 'win32' ? 'adb.exe' : 'adb';
-  const bundled = runtimeRoots.map((root) => path.join(root, `${platform}-${arch}`, executable));
-  return [...new Set([environment.ADB_PATH, ...bundled, executable].filter(Boolean))];
+  return androidAdbCandidates({ runtimeRoots, environment, platform, arch, resourcesPath: '', includeSdk: false });
 }
 
 function finite(value) {
@@ -258,23 +256,17 @@ class PerformanceMonitorService {
 
   async ensureAdb() {
     if (this.adbPath) return this.adbPath;
-    let lastError;
-    for (const candidate of adbCandidates(this.runtimeRoots)) {
-      try {
-        await execFileAsync(candidate, ['start-server'], { timeout: 15000, windowsHide: true, maxBuffer: 1024 * 1024 });
-        this.adbPath = candidate;
-        this.adbSource = this.runtimeRoots.some((root) => candidate.startsWith(root)) ? 'bundled' : candidate === process.env.ADB_PATH ? 'configured' : 'system';
-        return candidate;
-      } catch (error) {
-        lastError = error;
-      }
-    }
     const message = this.packaged
       ? '内置 Android 调试引擎缺失或损坏，请重新安装 Test cat。'
       : 'Android 调试引擎尚未准备，请运行 npm run prepare:android-runtime。';
-    const error = new Error(lastError?.code && lastError.code !== 'ENOENT' ? `ADB 启动失败：${lastError.message}` : message);
-    error.cause = lastError;
-    throw error;
+    const resolved = await resolveAndroidAdb({
+      candidates: adbCandidates(this.runtimeRoots),
+      errorMessage: message,
+      sourceOptions: { runtimeRoots: this.runtimeRoots, environment: process.env }
+    });
+    this.adbPath = resolved.path;
+    this.adbSource = resolved.source;
+    return this.adbPath;
   }
 
   async listDevices() {
