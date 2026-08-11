@@ -13,7 +13,6 @@
     "resources/**/*",
     "!resources/ios-performance-runtime/**/*",
     "!resources/platform-tools/**/*",
-    "CHANGELOG.md",
     "package.json"
   ],
   "asarUnpack": [

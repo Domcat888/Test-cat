@@ -19,6 +19,13 @@ test('parses diagnostics battery JSON and classifies temperature', () => {
   assert.equal(__test.classifyTemperature(42), 'serious');
 });
 
+test('prefers root-level battery capacity over nested raw gauge counters', () => {
+  const battery = __test.parseBatterySnapshot('{"CurrentCapacity":78,"BatteryData":{"CurrentCapacity":2437,"Temperature":2123366},"Temperature":3250,"IsCharging":true}');
+  assert.equal(battery.batteryLevel, 78);
+  assert.equal(battery.temperature, 32.5);
+  assert.equal(battery.charging, true);
+});
+
 test('parses graphics, installed apps, and DVT process snapshots', () => {
   assert.deepEqual(__test.parseGraphicsSnapshot('{"CoreAnimationFramesPerSecond":59.5,"Device Utilization %":21}'), { fps: 59.5, gpuUsage: 21 });
   const apps = __test.parseInstalledApps('[{"CFBundleDisplayName":"QA Demo","CFBundleIdentifier":"com.example.demo","CFBundleExecutable":"Demo"}]');
@@ -57,6 +64,10 @@ test('classifies iOS diagnostic logs and extracts crash summaries', () => {
   assert.equal(summary.terminationReason, 'SIGNAL 11');
   assert.equal(summary.timestamp, '2026-08-07T12:00:00.000Z');
   assert.equal(__test.shellQuote("C:/QA's Phone/python.exe"), `'C:/QA'"'"'s Phone/python.exe'`);
+  assert.equal(
+    __test.macTunnelCommand("/Applications/Test Cat/python", ['-m', 'pymobiledevice3', 'remote', 'tunneld']),
+    "'/Applications/Test Cat/python' '-m' 'pymobiledevice3' 'remote' 'tunneld' </dev/null >/tmp/test-cat-ios-tunneld.log 2>&1 &"
+  );
 });
 
 test('collects only the latest safe diagnostic log for each IPM category', async () => {

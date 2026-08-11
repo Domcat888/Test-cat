@@ -8,6 +8,57 @@ const execFileAsync = promisify(execFile);
 const MAX_OUTPUT = 8 * 1024 * 1024;
 const DEFAULT_INTERVAL = 700;
 
+function cleanRuntimeOutput(value) {
+  return String(value || '').replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '').trim();
+}
+
+function bundledPythonCandidates(runtimeRoots = [], platform = process.platform, arch = process.arch) {
+  const folder = `${platform}-${arch}`;
+  return runtimeRoots.flatMap((root) => platform === 'win32'
+    ? [path.join(root, folder, 'python.exe')]
+    : [path.join(root, folder, 'bin', 'python3'), path.join(root, folder, 'bin', 'python')]);
+}
+
+function pythonCandidates(environment = process.env, platform = process.platform, bundled = []) {
+  const configured = [environment?.IPM_PYTHON_PATH, environment?.PYMOBILEDEVICE3_PYTHON, environment?.PYTHON_PATH];
+  const system = platform === 'win32' ? ['python.exe', 'python'] : ['python3', 'python'];
+  return [...new Set([...bundled, ...configured, ...system].filter(Boolean))];
+}
+
+function parseUsbmuxDevices(output) {
+  let value;
+  try { value = JSON.parse(cleanRuntimeOutput(output)); } catch { return []; }
+  const rows = Array.isArray(value) ? value : value?.devices || value?.DeviceList || [];
+  return rows.map((row) => {
+    if (typeof row === 'string') return { serial: row, model: 'iPhone', state: 'device', platform: 'ios', source: 'pymobiledevice3' };
+    const properties = row?.Properties || row?.properties || row || {};
+    const serial = row?.Identifier || row?.UDID || row?.SerialNumber || row?.UniqueDeviceID
+      || properties.SerialNumber || properties.UDID || properties.UniqueDeviceID;
+    if (!serial) return null;
+    const iosVersion = row?.ProductVersion || properties.ProductVersion;
+    return {
+      serial: String(serial),
+      model: String(row?.DeviceName || row?.ProductType || properties.DeviceName || properties.ProductType || properties.DeviceClass || 'iPhone'),
+      state: 'device',
+      platform: 'ios',
+      connectionType: String(row?.ConnectionType || properties.ConnectionType || 'USB'),
+      source: 'pymobiledevice3',
+      ...(iosVersion ? { iosVersion: String(iosVersion) } : {})
+    };
+  }).filter(Boolean);
+}
+
+function classifyScreenshotFailure(error) {
+  const details = [error?.stderr, error?.stdout, error?.message].filter(Boolean).join('\n');
+  if (/tunneld|no tunnel|unable to connect.*tunnel|connection refused/i.test(details)) {
+    return new Error('iOS 17 投屏桥接未就绪，请重新连接手机并允许管理员授权。');
+  }
+  if (/device not found|no device|not connected/i.test(details)) {
+    return new Error('iPhone 已断开，请重新连接并保持手机解锁。');
+  }
+  return new Error('iOS 截图未生成，请保持手机解锁并重新开始投屏。');
+}
+
 function parseKeyValue(text) {
   const result = {};
   for (const line of String(text || '').split(/\r?\n/)) {
@@ -114,9 +165,14 @@ function buildScreenshotCommand(backend, serial, outputPath) {
 }
 
 class IosMirrorService {
-  constructor({ onFrame = () => {}, onStatus = () => {} } = {}) {
+  constructor({ onFrame = () => {}, onStatus = () => {}, runtimeRoots = [], packaged = false, ensureTunnel = null } = {}) {
     this.onFrame = onFrame;
     this.onStatus = onStatus;
+    this.runtimeRoots = runtimeRoots;
+    this.packaged = Boolean(packaged);
+    this.bundledPython = bundledPythonCandidates(runtimeRoots);
+    this.pythonSource = null;
+    this.ensureTunnel = typeof ensureTunnel === 'function' ? ensureTunnel : null;
     this.session = null;
     this.timer = null;
     this.commandCache = new Map();
@@ -145,6 +201,36 @@ class IosMirrorService {
     if (!executable) return null;
     const { stdout, stderr } = await execFileAsync(executable, args, { timeout, windowsHide: true, maxBuffer: MAX_OUTPUT });
     return stdout || stderr || '';
+  }
+
+  async pythonPath() {
+    if (this.commandCache.has('python')) return this.commandCache.get('python');
+    for (const candidate of pythonCandidates(process.env, process.platform, this.bundledPython)) {
+      if (this.packaged && !this.bundledPython.includes(candidate)) continue;
+      try {
+        await execFileAsync(candidate, ['-c', 'import pymobiledevice3'], { timeout: 8000, windowsHide: true, maxBuffer: 512 * 1024 });
+        this.commandCache.set('python', candidate);
+        this.pythonSource = this.bundledPython.includes(candidate) ? 'bundled' : 'configured';
+        return candidate;
+      } catch {}
+    }
+    this.commandCache.set('python', null);
+    return null;
+  }
+
+  async runPython(args, timeout = 20000) {
+    const executable = await this.pythonPath();
+    if (!executable) return null;
+    return execFileAsync(executable, ['-m', 'pymobiledevice3', '--no-color', ...args], { timeout, windowsHide: true, maxBuffer: MAX_OUTPUT });
+  }
+
+  async listRuntimeDevices() {
+    try {
+      const result = await this.runPython(['usbmux', 'list'], 15000);
+      return parseUsbmuxDevices(result?.stdout || '');
+    } catch {
+      return [];
+    }
   }
 
   async listDevices() {
@@ -176,6 +262,9 @@ class IosMirrorService {
       } catch {}
     }
 
+    const runtimeDevices = await this.listRuntimeDevices();
+    if (runtimeDevices.length) return runtimeDevices;
+
     if (process.platform === 'darwin') {
       try {
         const { stdout } = await execFileAsync('/usr/sbin/system_profiler', ['SPUSBDataType', '-json'], { timeout: 10000, windowsHide: true, maxBuffer: MAX_OUTPUT });
@@ -206,16 +295,27 @@ class IosMirrorService {
     if (idevice) return { type: 'idevicescreenshot', path: idevice };
     const tidevice = await this.commandPath('tidevice');
     if (tidevice) return { type: 'tidevice', path: tidevice };
-    throw new Error('未找到 iOS 截图工具。请安装 libimobiledevice（idevicescreenshot）或 tidevice，并确认 Apple USB 驱动已安装。');
+    const python = await this.pythonPath();
+    if (python) return { type: 'pymobiledevice3', path: python };
+    throw new Error('未找到 iOS 截图工具。请安装 libimobiledevice/tidevice，或重新安装包含 iOS 运行时的 Test cat。');
   }
 
   async start(configuration = {}) {
     await this.stop(false);
     const serial = this.validateSerial(configuration.serial);
-    const tool = await this.resolveScreenshotTool();
     const device = (await this.listDevices()).find((item) => item.serial === serial) || { serial, model: 'iPhone', platform: 'ios' };
+    const tool = await this.resolveScreenshotTool();
+    const requiresTunnel = tool.type === 'pymobiledevice3' && Number.parseInt(device.iosVersion, 10) >= 17;
+    if (requiresTunnel && this.ensureTunnel) {
+      this.onStatus({ phase: 'starting', message: '正在启动 iOS 17 投屏桥接…', serial, model: device.model });
+      try {
+        await this.ensureTunnel();
+      } catch (error) {
+        throw new Error(`iOS 17 投屏桥接启动失败：${error.message || String(error)}`);
+      }
+    }
     const interval = this.validateInterval(configuration.interval);
-    this.session = { serial, model: device.model || 'iPhone', tool, interval, startedAt: Date.now(), stopped: false };
+    this.session = { serial, model: device.model || 'iPhone', tool, interval, requiresTunnel, startedAt: Date.now(), stopped: false };
     this.onStatus({ phase: 'streaming', message: `iOS 投屏已连接：${this.session.model}`, serial, model: this.session.model, controlSupported: false, streamMode: 'USB 截图轮询' });
     this.scheduleFrame(0);
     return { serial, model: this.session.model, interval, startedAt: this.session.startedAt, controlSupported: false, streamMode: 'USB 截图轮询' };
@@ -225,9 +325,29 @@ class IosMirrorService {
     const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'test-cat-ios-'));
     const outputPath = path.join(tempDir, 'screen.png');
     try {
-      const command = buildScreenshotCommand(session.tool.type, session.serial, outputPath);
-      await execFileAsync(session.tool.path, command.args, { timeout: 20000, windowsHide: true, maxBuffer: MAX_OUTPUT });
-      const buffer = await fs.readFile(outputPath);
+      let result;
+      if (session.tool.type === 'pymobiledevice3') {
+        const target = session.requiresTunnel ? ['--tunnel', session.serial] : ['--udid', session.serial];
+        try {
+          result = await execFileAsync(session.tool.path, ['-m', 'pymobiledevice3', '--no-color', 'developer', 'screenshot', ...target, outputPath], { timeout: 30000, windowsHide: true, maxBuffer: MAX_OUTPUT });
+        } catch (error) {
+          throw classifyScreenshotFailure(error);
+        }
+      } else {
+        const command = buildScreenshotCommand(session.tool.type, session.serial, outputPath);
+        try {
+          result = await execFileAsync(session.tool.path, command.args, { timeout: 20000, windowsHide: true, maxBuffer: MAX_OUTPUT });
+        } catch (error) {
+          throw classifyScreenshotFailure(error);
+        }
+      }
+      let buffer;
+      try {
+        buffer = await fs.readFile(outputPath);
+      } catch (error) {
+        if (error.code === 'ENOENT') throw classifyScreenshotFailure(result);
+        throw error;
+      }
       const dataUrl = normalizeScreenshotData(buffer);
       if (!dataUrl) throw new Error('截图文件为空或格式无法解析。');
       return dataUrl;
@@ -269,11 +389,15 @@ module.exports = {
   IosMirrorService,
   __test: {
     buildScreenshotCommand,
+    bundledPythonCandidates,
+    classifyScreenshotFailure,
     commandCandidates,
     normalizeScreenshotData,
     parseIdeviceIds,
     parseIdeviceInfo,
     parseTideviceList,
-    parseUsbDevices
+    parseUsbDevices,
+    parseUsbmuxDevices,
+    pythonCandidates
   }
 };

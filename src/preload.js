@@ -84,10 +84,6 @@ ipcRenderer.on('companion-pet:drag-state', (_event, state) => {
 
 contextBridge.exposeInMainWorld('testCat', {
   platform: process.platform,
-  appUpdate: {
-    check: () => ipcRenderer.invoke('app-update:check'),
-    download: (payload) => ipcRenderer.invoke('app-update:download', payload)
-  },
   capture: {
     getSettings: () => ipcRenderer.invoke('capture:get-settings'),
     saveSettings: (settings) => ipcRenderer.invoke('capture:save-settings', settings),

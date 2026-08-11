@@ -45,6 +45,44 @@ test('resolves Windows command candidates including executable paths', () => {
   assert.ok(candidates.includes('C:\\Program Files\\libimobiledevice\\idevicescreenshot.exe'));
 });
 
+test('parses pymobiledevice3 short-info rows used by the bundled iOS runtime', () => {
+  const rows = __test.parseUsbmuxDevices('[{"UniqueDeviceID":"UDID3","DeviceName":"QA iPhone 15","ProductType":"iPhone15,2","ProductVersion":"17.1.1","ConnectionType":"USB"}]');
+  assert.deepEqual(rows[0], { serial: 'UDID3', model: 'QA iPhone 15', state: 'device', platform: 'ios', connectionType: 'USB', source: 'pymobiledevice3', iosVersion: '17.1.1' });
+});
+
+test('uses the bundled pymobiledevice3 runtime when native screenshot tools are unavailable', async () => {
+  const service = new IosMirrorService({ runtimeRoots: ['/runtime/ios'], onFrame: () => {}, onStatus: () => {} });
+  service.commandPath = async () => null;
+  service.pythonPath = async () => '/runtime/ios/darwin-arm64/bin/python3';
+  service.runPython = async () => ({ stdout: '[{"UniqueDeviceID":"UDID3","DeviceName":"QA iPhone 15"}]' });
+  const devices = await service.listDevices();
+  assert.equal(devices[0].serial, 'UDID3');
+  assert.equal((await service.resolveScreenshotTool()).type, 'pymobiledevice3');
+});
+
+test('starts the iOS 17 tunnel before a bundled-runtime mirror session', async () => {
+  let tunnelCalls = 0;
+  const service = new IosMirrorService({
+    ensureTunnel: async () => { tunnelCalls += 1; },
+    onFrame: () => {},
+    onStatus: () => {}
+  });
+  service.resolveScreenshotTool = async () => ({ type: 'pymobiledevice3', path: '/runtime/python3' });
+  service.listDevices = async () => [{ serial: 'UDID3', model: 'QA iPhone 15', iosVersion: '17.1.1', state: 'device', platform: 'ios' }];
+  service.scheduleFrame = () => {};
+  const meta = await service.start({ serial: 'UDID3' });
+  assert.equal(tunnelCalls, 1);
+  assert.equal(service.session.requiresTunnel, true);
+  assert.equal(meta.model, 'QA iPhone 15');
+  await service.stop(false);
+});
+
+test('converts missing screenshot output into an actionable message', () => {
+  assert.match(__test.classifyScreenshotFailure({ stderr: 'Unable to connect to Tunneld' }).message, /桥接未就绪/);
+  assert.match(__test.classifyScreenshotFailure({ stderr: 'Device not found' }).message, /已断开/);
+  assert.doesNotMatch(__test.classifyScreenshotFailure({ message: 'ENOENT /tmp/screen.png' }).message, /\/tmp|ENOENT/);
+});
+
 test('normalizes screenshot buffers and data URLs', () => {
   const base64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAAB';
   assert.equal(__test.normalizeScreenshotData(Buffer.from(base64, 'base64')), `data:image/png;base64,${base64}`);

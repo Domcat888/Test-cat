@@ -36,6 +36,10 @@ function appleScriptString(value) {
   return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
+function macTunnelCommand(python, args) {
+  return `${[python, ...args].map(shellQuote).join(' ')} </dev/null >/tmp/test-cat-ios-tunneld.log 2>&1 &`;
+}
+
 function parseSystemSnapshot(output) {
   const values = {};
   for (const rawLine of cleanOutput(output).split(/\r?\n/)) {
@@ -82,8 +86,17 @@ function parseBatterySnapshot(output) {
   walk(value);
   const rawTemperature = values.temperature;
   const temperature = Number.isFinite(rawTemperature) ? rawTemperature / (Math.abs(rawTemperature) > 200 ? 100 : 1) : null;
-  const rawBattery = values.currentcapacity ?? values.batterycurrentcapacity ?? values.batterypercent ?? values.level;
-  const batteryLevel = Number.isFinite(rawBattery) && rawBattery >= 0 && rawBattery <= 100 ? rawBattery : null;
+  const batteryCandidates = [
+    value?.BatteryCurrentCapacity,
+    value?.CurrentCapacity,
+    value?.BatteryPercent,
+    value?.Level,
+    values.batterycurrentcapacity,
+    values.currentcapacity,
+    values.batterypercent,
+    values.level
+  ].map(number);
+  const batteryLevel = batteryCandidates.find((candidate) => Number.isFinite(candidate) && candidate >= 0 && candidate <= 100) ?? null;
   const charging = values.ischarging === 1 || values.ischarging === true || values.charging === 1 || values.charging === true ? true
     : values.ischarging === 0 || values.charging === 0 ? false : null;
   return { batteryLevel, temperature, charging };
@@ -584,18 +597,22 @@ class IosPerformanceService {
       this.onStatus({ phase: 'tunnel', message: '已请求管理员启动 iOS 性能隧道，请等待几秒后重试采集。' });
       return { started: true, managed: false };
     }
+    if (process.platform === 'darwin') {
+      const command = macTunnelCommand(python, args);
+      await execFileAsync('/usr/bin/osascript', ['-e', `do shell script "${appleScriptString(command)}" with administrator privileges`], { timeout: 120000, windowsHide: true });
+      if (!await this.waitForTunnel(10000)) throw new Error('iOS 性能桥接启动失败，请确认管理员授权后重试。');
+      this.onStatus({ phase: 'tunnel', message: '已通过系统授权启动 iOS 性能桥接。' });
+      return { started: true, ready: true, managed: false };
+    }
     this.tunnelProcess = spawn(python, args, { detached: true, stdio: 'ignore' });
     this.tunnelProcess.unref();
-    if (process.platform !== 'darwin' || await this.waitForTunnel(2500)) {
+    if (await this.waitForTunnel(2500)) {
       this.onStatus({ phase: 'tunnel', message: 'iOS 性能隧道已启动。' });
       return { started: true, managed: true };
     }
     try { this.tunnelProcess.kill(); } catch {}
     this.tunnelProcess = null;
-    const command = `nohup ${[python, ...args].map(shellQuote).join(' ')} >/tmp/test-cat-ios-tunneld.log 2>&1 &`;
-    await execFileAsync('/usr/bin/osascript', ['-e', `do shell script "${appleScriptString(command)}" with administrator privileges`], { timeout: 120000, windowsHide: true });
-    this.onStatus({ phase: 'tunnel', message: '已通过系统授权启动 iOS 性能桥接。' });
-    return { started: true, managed: false };
+    throw new Error('iOS 性能桥接启动失败。');
   }
 
   isTunnelRunning() {
@@ -643,6 +660,7 @@ module.exports = {
     classifyTemperature,
     diagnosticSummary,
     diagnosticType,
+    macTunnelCommand,
     shellQuote,
     parseBatterySnapshot,
     parseGraphicsSnapshot,
