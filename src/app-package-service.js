@@ -32,9 +32,95 @@ function parseDeviceList(output) {
       model: normalizeModel(model) || serial,
       product,
       transport,
+      platform: 'android',
       label: (normalizeModel(model) || serial) + ' · ' + serial
     };
   });
+}
+
+function cleanCliOutput(value) {
+  return String(value || '').replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '').trim();
+}
+
+function parseIosDeviceList(output) {
+  let value;
+  try { value = JSON.parse(cleanCliOutput(output)); } catch { return []; }
+  const rows = Array.isArray(value) ? value : value?.devices || value?.DeviceList || [];
+  return rows.map((row) => {
+    if (typeof row === 'string') {
+      return { serial: row, model: 'iPhone', state: 'device', platform: 'ios', connectionType: 'USB', label: `iPhone · ${row}` };
+    }
+    const properties = row?.Properties || row?.properties || row || {};
+    const serial = row?.Identifier || row?.UDID || row?.SerialNumber || properties.SerialNumber || properties.UDID;
+    if (!serial) return null;
+    const model = String(row?.DeviceName || row?.ProductType || properties.DeviceName || properties.ProductType || properties.DeviceClass || 'iPhone');
+    const connectionType = String(row?.ConnectionType || properties.ConnectionType || 'USB');
+    return {
+      serial: String(serial),
+      model,
+      state: 'device',
+      platform: 'ios',
+      connectionType,
+      label: `${model} · ${serial}`
+    };
+  }).filter(Boolean);
+}
+
+function parseIosInstalledPackages(output) {
+  let value;
+  try { value = JSON.parse(cleanCliOutput(output)); } catch { return []; }
+  const apps = [];
+  const walk = (node, hintedBundleId = '') => {
+    if (!node || typeof node !== 'object') return;
+    if (Array.isArray(node)) return node.forEach((item) => walk(item));
+    const packageName = node.CFBundleIdentifier || node.bundleIdentifier || node.bundle_id || node.identifier
+      || (hintedBundleId.includes('.') ? hintedBundleId : '');
+    if (packageName) {
+      apps.push({
+        packageName: String(packageName),
+        appName: String(node.CFBundleDisplayName || node.CFBundleName || node.displayName || node.name || packageName),
+        versionName: String(node.CFBundleShortVersionString || node.version || ''),
+        versionCode: String(node.CFBundleVersion || node.build || ''),
+        apkPath: '',
+        system: String(node.ApplicationType || node.applicationType || '').toLowerCase() === 'system',
+        platform: 'ios',
+        label: String(node.CFBundleDisplayName || node.CFBundleName || node.displayName || node.name || packageName)
+      });
+      return;
+    }
+    for (const [key, item] of Object.entries(node)) walk(item, key);
+  };
+  walk(value);
+  return [...new Map(apps.map((app) => [app.packageName, app])).values()]
+    .sort((left, right) => left.appName.localeCompare(right.appName, 'zh-CN'));
+}
+
+function iosPythonCandidates(runtimeRoots = [], platform = process.platform, arch = process.arch, packaged = false) {
+  const folder = `${platform}-${arch}`;
+  const bundled = runtimeRoots.flatMap((root) => platform === 'win32'
+    ? [path.join(root, folder, 'python.exe')]
+    : [path.join(root, folder, 'bin', 'python3'), path.join(root, folder, 'bin', 'python')]);
+  const configured = [process.env.IPM_PYTHON_PATH, process.env.PYMOBILEDEVICE3_PYTHON, process.env.PYTHON_PATH];
+  const system = platform === 'win32' ? ['python.exe', 'python'] : ['python3', 'python'];
+  return [...new Set([...bundled, ...configured, ...(packaged ? [] : system)].filter(Boolean))];
+}
+
+function classifyIosFailure(error, fallback = 'iPhone 操作失败') {
+  const raw = [error?.stdout, error?.stderr, error?.message, error].map((item) => String(item || '')).filter(Boolean).join('\n');
+  const rules = [
+    [/UserDeniedPairing|PairingDialogResponsePending|not paired|pair the device|InvalidHostID|lockdown.*pair/i, 'not-trusted', 'iPhone 尚未信任这台电脑。请解锁手机，在弹窗中点“信任”，然后重新连接。'],
+    [/PasswordProtected|device is locked|DeviceLocked|unlock the device/i, 'device-locked', 'iPhone 当前处于锁定状态，请解锁并保持屏幕亮起后重试。'],
+    [/Developer Mode.*disabled|enable Developer Mode|DeveloperMode/i, 'developer-mode', '安装失败：请在 iPhone「设置 → 隐私与安全性 → 开发者模式」中开启开发者模式。'],
+    [/ApplicationVerificationFailed|A valid provisioning profile|provisioning profile|0xe800801[5-9a-f]|0xe8008029|not provisioned/i, 'provisioning', '安装失败：IPA 的描述文件或设备授权不匹配。请确认安装包已签名，并且当前 iPhone 的 UDID 包含在描述文件中。'],
+    [/code signature|signature.*invalid|integrity could not be verified|0xe8008001|0xe800800d/i, 'signature-invalid', '安装失败：IPA 签名无效或证书已失效，请重新签名后再安装。'],
+    [/already installed|bundle.*already exists|0xe8000067/i, 'already-installed', '安装失败：设备上已有冲突版本，请先卸载旧应用后重试。'],
+    [/No space left|insufficient storage|0xe8000050/i, 'insufficient-storage', '安装失败：iPhone 存储空间不足，请清理空间后重试。'],
+    [/WinError 10061|usbmuxd|Apple Mobile Device|Failed to connect to.*27015/i, 'apple-driver', '无法连接 Apple 设备服务。Windows 请安装 Apple Devices 或 iTunes 并确认 Apple Mobile Device Service 正在运行；macOS 请重新插拔设备。'],
+    [/NoDeviceConnected|No device|Could not find device|Device .* not found|MuxException|ConnectionFailedError/i, 'device-missing', '未找到目标 iPhone。请确认数据线可传输数据、手机已解锁并已信任此电脑。']
+  ];
+  const matched = rules.find(([pattern]) => pattern.test(raw));
+  if (matched) return { code: matched[1], message: matched[2], raw };
+  return { code: 'ios-error', message: cleanCliOutput(error?.stderr || error?.stdout || error?.message) || fallback, raw };
 }
 
 function parseInstalledPackages(output) {
@@ -535,13 +621,15 @@ function formatBytes(value) {
 }
 
 class AppPackageService {
-  constructor({ dialog, getWindow, appPath, runtimeRoots = [], packaged = false } = {}) {
+  constructor({ dialog, getWindow, appPath, runtimeRoots = [], iosRuntimeRoots = [], packaged = false } = {}) {
     this.dialog = dialog;
     this.getWindow = getWindow || (() => null);
     this.appPath = appPath || process.cwd();
     this.adbPath = null;
     this.adbSource = null;
     this.runtimeRoots = runtimeRoots;
+    this.iosRuntimeRoots = iosRuntimeRoots;
+    this.iosPythonPath = null;
     this.packaged = Boolean(packaged);
   }
 
@@ -576,6 +664,40 @@ class AppPackageService {
     }
   }
 
+  async resolveIosPythonPath() {
+    if (this.iosPythonPath) return this.iosPythonPath;
+    for (const candidate of iosPythonCandidates(this.iosRuntimeRoots, process.platform, process.arch, this.packaged)) {
+      try {
+        await execFileAsync(candidate, ['-c', 'import pymobiledevice3'], { timeout: 8000, windowsHide: true, maxBuffer: 512 * 1024 });
+        this.iosPythonPath = candidate;
+        return candidate;
+      } catch {}
+    }
+    throw new Error(this.packaged
+      ? '内置 iOS 设备引擎缺失或损坏，请重新安装 Test cat。'
+      : 'iOS 设备引擎尚未准备，请运行 npm run prepare:ios-runtime。');
+  }
+
+  async ios(args, timeout = 30000) {
+    const executable = await this.resolveIosPythonPath();
+    try {
+      const { stdout, stderr } = await execFileAsync(executable, ['-m', 'pymobiledevice3', '--no-color', ...args], {
+        timeout,
+        windowsHide: true,
+        maxBuffer: 16 * 1024 * 1024
+      });
+      return stdout || stderr || '';
+    } catch (error) {
+      throw Object.assign(error, { iosFailure: classifyIosFailure(error) });
+    }
+  }
+
+  validateIosSerial(serial) {
+    const value = String(serial || '').trim();
+    if (!value || value.length > 200 || !/^[A-Za-z0-9_.:-]+$/.test(value)) throw new Error('请选择有效的 iPhone 设备。');
+    return value;
+  }
+
   async selectPackage() {
     const result = await this.dialog.showOpenDialog(this.getWindow() || undefined, {
       title: '选择安装包',
@@ -599,11 +721,25 @@ class AppPackageService {
     });
   }
 
-  async listDevices() {
+  async listAndroidDevices() {
     return parseDeviceList(await this.adb(['devices', '-l'], 15000));
   }
 
-  async listInstalledPackages({ serial, includeSystem = false } = {}) {
+  async listIosDevices() {
+    const devices = parseIosDeviceList(await this.ios(['usbmux', 'list'], 15000));
+    return devices;
+  }
+
+  async listDevices({ platform = 'all' } = {}) {
+    if (platform === 'android') return this.listAndroidDevices();
+    if (platform === 'ios') return this.listIosDevices();
+    const results = await Promise.allSettled([this.listAndroidDevices(), this.listIosDevices()]);
+    const devices = results.flatMap((result) => result.status === 'fulfilled' ? result.value : []);
+    if (devices.length || results.some((result) => result.status === 'fulfilled')) return devices;
+    throw new Error('Android 和 iOS 设备引擎均不可用，请检查本地运行环境。');
+  }
+
+  async listAndroidInstalledPackages({ serial, includeSystem = false } = {}) {
     if (!serial) throw new Error('请选择一台 Android 设备');
     const args = ['-s', serial, 'shell', 'cmd', 'package', 'list', 'packages', '-f', '--show-versioncode'];
     if (!includeSystem) args.push('-3');
@@ -621,9 +757,26 @@ class AppPackageService {
     }
   }
 
-  async runForDevices(serials, action, classifyFailure = classifyInstallFailure) {
+  async listIosInstalledPackages({ serial, includeSystem = false } = {}) {
+    const safeSerial = this.validateIosSerial(serial);
+    try {
+      const type = includeSystem ? 'Any' : 'User';
+      return parseIosInstalledPackages(await this.ios(['apps', 'list', '--udid', safeSerial, '--type', type], 60000));
+    } catch (error) {
+      const failure = classifyIosFailure(error, '读取 iPhone 已安装 App 失败');
+      throw new Error(failure.message);
+    }
+  }
+
+  async listInstalledPackages(payload = {}) {
+    return payload.platform === 'ios'
+      ? this.listIosInstalledPackages(payload)
+      : this.listAndroidInstalledPackages(payload);
+  }
+
+  async runForDevices(serials, action, classifyFailure = classifyInstallFailure, deviceLabel = 'Android 设备') {
     const devices = Array.isArray(serials) ? serials.filter(Boolean) : [];
-    if (!devices.length) throw new Error('请选择至少一台 Android 设备');
+    if (!devices.length) throw new Error(`请选择至少一台${deviceLabel}`);
     return Promise.all(devices.map(async (serial) => {
       try {
         const output = await action(serial);
@@ -636,8 +789,10 @@ class AppPackageService {
   }
 
   async installPackage({ serials, filePath, allowDowngrade = true, grantPermissions = true, replace = true } = {}) {
-    if (!filePath) throw new Error('请选择 APK 文件');
-    if (path.extname(filePath).toLowerCase() !== '.apk') throw new Error('当前只支持通过 ADB 安装 APK，IPA 暂不支持直接安装。');
+    if (!filePath) throw new Error('请选择 APK 或 IPA 文件');
+    const extension = path.extname(filePath).toLowerCase();
+    if (extension === '.ipa') return this.installIpa({ serials, filePath });
+    if (extension !== '.apk') throw new Error('只支持安装 APK 或 IPA 文件。');
     const options = [];
     if (replace) options.push('-r');
     if (allowDowngrade) options.push('-d');
@@ -649,8 +804,21 @@ class AppPackageService {
     }, classifyInstallFailure);
   }
 
-  async uninstallPackage({ serials, packageName, keepData = false } = {}) {
+  async installIpa({ serials, filePath } = {}) {
+    return this.runForDevices(serials, async (serial) => {
+      const output = await this.ios(['apps', 'install', filePath, '--udid', this.validateIosSerial(serial)], 10 * 60 * 1000);
+      return cleanCliOutput(output) || 'IPA 已安装';
+    }, classifyIosFailure, 'iPhone 设备');
+  }
+
+  async uninstallPackage({ serials, packageName, keepData = false, platform = 'android' } = {}) {
     if (!packageName) throw new Error('缺少应用包名');
+    if (platform === 'ios') {
+      return this.runForDevices(serials, async (serial) => {
+        const output = await this.ios(['apps', 'uninstall', packageName, '--udid', this.validateIosSerial(serial)], 180000);
+        return cleanCliOutput(output) || 'App 已卸载';
+      }, classifyIosFailure, 'iPhone 设备');
+    }
     return this.runForDevices(serials, (serial) => this.adb(['-s', serial, 'uninstall', ...(keepData ? ['-k'] : []), packageName], 90000), classifyAdbFailure);
   }
 
@@ -692,7 +860,8 @@ class AppPackageService {
     }
   }
 
-  async clearData({ serials, packageName } = {}) {
+  async clearData({ serials, packageName, platform = 'android' } = {}) {
+    if (platform === 'ios') throw new Error('iOS 不允许电脑直接清除单个 App 数据；请卸载后重新安装。');
     if (!packageName) throw new Error('缺少应用包名');
     return this.runForDevices(serials, (serial) => this.clearDataForDevice(serial, packageName), classifyClearDataFailure);
   }
@@ -709,8 +878,12 @@ module.exports = {
     parseApkInfo,
     parseBinaryPlist,
     parseDeviceList,
+    parseIosDeviceList,
+    parseIosInstalledPackages,
     parseInstalledPackages,
     parseXmlPlist,
+    classifyIosFailure,
+    iosPythonCandidates,
     readZipEntries,
     readZipEntry
   }

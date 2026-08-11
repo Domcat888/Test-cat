@@ -1,6 +1,6 @@
 {
   "name": "test-cat",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "A cross-platform desktop shell for organizing local testing tools.",
   "main": "src/main.js",
   "author": "Test cat",
@@ -17,12 +17,13 @@
     "start": "npm run prepare:runtimes && npm run build:renderer && electron .",
     "preview": "npm run prepare:runtimes && npm run build:renderer && electron .",
     "dev": "npm run prepare:runtimes && npm run build:renderer && electron . --devtools",
-    "test": "node --test",
+    "test": "node --test test",
     "verify:scrcpy": "node scripts/verify-scrcpy.mjs",
     "pack": "npm run prepare:runtimes && npm run build:renderer && electron-builder --dir",
-    "build:mac": "npm run prepare:runtimes && npm run build:renderer && electron-builder --mac",
+    "prepare:mac-universal-runtimes": "npm run prepare:android-runtime -- --platform=darwin --arch=arm64 && npm run prepare:android-runtime -- --platform=darwin --arch=x64 && npm run prepare:ios-runtime -- --platform=darwin --arch=arm64 && npm run prepare:ios-runtime -- --platform=darwin --arch=x64",
+    "build:mac": "npm run prepare:mac-universal-runtimes && npm run build:renderer && electron-builder --mac --universal",
     "build:mac:catalina": "npm run prepare:android-runtime -- --platform=darwin --arch=x64 && npm run prepare:ios-runtime -- --platform=darwin --arch=x64 && npm run build:renderer && electron-builder --config electron-builder.catalina.json --mac --x64",
-    "build:win": "npm run prepare:android-runtime -- --platform=win32 --arch=x64 && npm run prepare:ios-runtime -- --platform=win32 --arch=x64 && npm run build:renderer && electron-builder --win",
+    "build:win": "npm run prepare:android-runtime -- --platform=win32 --arch=x64 && npm run prepare:ios-runtime -- --platform=win32 --arch=x64 && npm run build:renderer && electron-builder --config electron-builder.win.json --win",
     "build": "npm run prepare:runtimes && npm run build:renderer && electron-builder"
   },
   "devDependencies": {
@@ -52,15 +53,29 @@
     ],
     "extraResources": [
       {
-        "from": "resources/ios-performance-runtime",
-        "to": "ios-performance-runtime",
+        "from": "resources/ios-performance-runtime/darwin-arm64",
+        "to": "ios-performance-runtime/darwin-arm64",
         "filter": [
           "**/*"
         ]
       },
       {
-        "from": "resources/platform-tools",
-        "to": "platform-tools",
+        "from": "resources/ios-performance-runtime/darwin-x64",
+        "to": "ios-performance-runtime/darwin-x64",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "resources/platform-tools/darwin-arm64",
+        "to": "platform-tools/darwin-arm64",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "resources/platform-tools/darwin-x64",
+        "to": "platform-tools/darwin-x64",
         "filter": [
           "**/*"
         ]
@@ -69,6 +84,7 @@
     "mac": {
       "icon": "assets/icons/test-cat.icns",
       "category": "public.app-category.developer-tools",
+      "x64ArchFiles": "Contents/Resources/{ios-performance-runtime,platform-tools}/**/{*,.*/**}",
       "target": [
         "dmg",
         "zip"

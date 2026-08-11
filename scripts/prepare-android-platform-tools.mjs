@@ -46,6 +46,16 @@ async function validate(adb) {
   }
 }
 
+async function validateRuntime(adb, platform) {
+  if (platform === process.platform) return validate(adb);
+  try {
+    const stat = await fs.stat(adb);
+    return stat.isFile() && stat.size > 0;
+  } catch {
+    return false;
+  }
+}
+
 async function pruneRuntime(runtimeRoot, platform) {
   try {
     const entries = await fs.readdir(runtimeRoot, { withFileTypes: true });
@@ -70,7 +80,6 @@ async function main() {
   const platform = option('platform', process.platform);
   const arch = normalizeArch(option('arch', process.arch));
   if (!['darwin', 'win32'].includes(platform)) throw new Error('Android Platform Tools 运行时仅支持 Windows 和 macOS。');
-  if (platform !== process.platform) throw new Error(`请在目标系统上准备 Android 运行时：当前 ${process.platform}，目标 ${platform}。`);
   if (platform === 'win32' && arch !== 'x64') throw new Error('当前 Windows 安装包仅支持 x64。');
   if (platform === 'darwin' && !['arm64', 'x64'].includes(arch)) throw new Error(`不支持的 macOS 架构：${arch}`);
 
@@ -79,7 +88,7 @@ async function main() {
   const executable = platform === 'win32' ? 'adb.exe' : 'adb';
   const adb = path.join(targetRoot, executable);
   await pruneRuntime(targetRoot, platform);
-  if (await validate(adb)) {
+  if (await validateRuntime(adb, platform)) {
     process.stdout.write(`Android Platform Tools runtime is ready: ${targetRoot}\n`);
     return;
   }
@@ -98,7 +107,7 @@ async function main() {
     const stagedAdb = path.join(stagingRoot, executable);
     if (platform !== 'win32') await fs.chmod(stagedAdb, 0o755);
     await pruneRuntime(stagingRoot, platform);
-    if (!await validate(stagedAdb)) throw new Error('内置 Android Platform Tools 校验失败。');
+    if (!await validateRuntime(stagedAdb, platform)) throw new Error('内置 Android Platform Tools 校验失败。');
     await fs.writeFile(path.join(stagingRoot, 'test-cat-runtime.json'), JSON.stringify({ platform, arch, source: 'Google Android SDK Platform Tools', createdAt: new Date().toISOString() }, null, 2));
     await fs.rm(targetRoot, { recursive: true, force: true });
     await fs.mkdir(runtimeRoot, { recursive: true });

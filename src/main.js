@@ -1714,7 +1714,7 @@ function setupIpc() {
   });
   ipcMain.handle('app-package:select-package', () => appPackageService.selectPackage());
   ipcMain.handle('app-package:inspect-package', (_event, filePath) => appPackageService.inspectPackage(filePath));
-  ipcMain.handle('app-package:list-devices', () => appPackageService.listDevices());
+  ipcMain.handle('app-package:list-devices', (_event, payload) => appPackageService.listDevices(payload || {}));
   ipcMain.handle('app-package:list-installed', (_event, payload) => appPackageService.listInstalledPackages(payload || {}));
   ipcMain.handle('app-package:install', (_event, payload) => appPackageService.installPackage(payload || {}));
   ipcMain.handle('app-package:uninstall', (_event, payload) => appPackageService.uninstallPackage(payload || {}));
@@ -2535,6 +2535,10 @@ app.whenReady().then(() => {
     path.join(process.resourcesPath, 'platform-tools'),
     path.join(app.getAppPath(), 'resources', 'platform-tools')
   ];
+  const iosRuntimeRoots = [
+    path.join(process.resourcesPath, 'ios-performance-runtime'),
+    path.join(app.getAppPath(), 'resources', 'ios-performance-runtime')
+  ];
   mobileMirrorService = new MobileMirrorService({
     appPath: app.getAppPath(),
     runtimeRoots: androidRuntimeRoots,
@@ -2555,10 +2559,7 @@ app.whenReady().then(() => {
   });
   iosPerformanceService = new IosPerformanceService({
     listDevices: () => iosMirrorService.listDevices(),
-    runtimeRoots: [
-      path.join(process.resourcesPath, 'ios-performance-runtime'),
-      path.join(app.getAppPath(), 'resources', 'ios-performance-runtime')
-    ],
+    runtimeRoots: iosRuntimeRoots,
     packaged: app.isPackaged,
     onSample: (sample) => {
       if (iosPerformanceWindow && !iosPerformanceWindow.isDestroyed()) iosPerformanceWindow.webContents.send('ios-performance:sample', sample);
@@ -2611,6 +2612,7 @@ app.whenReady().then(() => {
     dialog,
     appPath: app.getAppPath(),
     runtimeRoots: androidRuntimeRoots,
+    iosRuntimeRoots,
     packaged: app.isPackaged,
     getWindow: () => appPackageWindow && !appPackageWindow.isDestroyed() ? appPackageWindow : mainWindow
   });

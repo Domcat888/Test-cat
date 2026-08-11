@@ -21,15 +21,15 @@
   ],
   "extraResources": [
     {
-      "from": "resources/ios-performance-runtime",
-      "to": "ios-performance-runtime",
+      "from": "resources/ios-performance-runtime/darwin-x64",
+      "to": "ios-performance-runtime/darwin-x64",
       "filter": [
         "**/*"
       ]
     },
     {
-      "from": "resources/platform-tools",
-      "to": "platform-tools",
+      "from": "resources/platform-tools/darwin-x64",
+      "to": "platform-tools/darwin-x64",
       "filter": [
         "**/*"
       ]

@@ -6,6 +6,8 @@ const state = {
   devices: [],
   installedPackages: [],
   selectedInstalled: '',
+  platform: 'android',
+  deviceRequestId: 0,
   busy: false
 };
 
@@ -58,8 +60,7 @@ function displayPackagePath(info) {
 }
 
 function renderPackage(info) {
-  const disabled = !info || info.type !== 'apk';
-  $('#install-button').disabled = disabled;
+  $('#install-button').disabled = !info;
   if (!info) return;
   $('#package-summary').innerHTML =
     '<div class="summary-head"><div><h1>' + escapeHtml(info.appName || info.fileName) + '</h1><p>' + escapeHtml(displayPackagePath(info)) + '</p></div><span class="type-badge">' + escapeHtml(info.type) + '</span></div>' +
@@ -71,7 +72,7 @@ function renderPackage(info) {
       '<div><span>文件 MD5</span><strong title="' + escapeHtml(upperHash(info.md5)) + '">' + escapeHtml(upperHash(info.md5) || '—') + '</strong></div>' +
     '</div>';
 
-  $('#info-grid').innerHTML = [
+  const commonFields = [
     field('文件名', info.fileName),
     field('文件大小', info.fileSizeText),
     field('文件 MD5', upperHash(info.md5), 'hash-card'),
@@ -83,17 +84,52 @@ function renderPackage(info) {
     field('版本名', info.versionName),
     field('内部版本号 / versionCode', info.versionCode),
     field(info.type === 'apk' ? 'Min SDK' : '最低 iOS', info.type === 'apk' ? (info.minSdkLabel || info.minSdk) : info.minSdk),
-    field('Target SDK', info.targetSdkLabel || info.targetSdk),
-    field('Debuggable', info.debuggable ? '是' : '否'),
     field('签名状态', info.signature?.signed ? '已签名' : '未识别签名'),
-    field('签名方案', (info.signature?.schemes || []).join('、')),
-    field('证书 MD5', certificateMd5(info), 'hash-card')
-  ].join('');
+    field('签名方案', (info.signature?.schemes || []).join('、'))
+  ];
+  if (info.type === 'apk') {
+    commonFields.push(
+      field('Target SDK', info.targetSdkLabel || info.targetSdk),
+      field('Debuggable', info.debuggable ? '是' : '否'),
+      field('证书 MD5', certificateMd5(info), 'hash-card')
+    );
+  }
+  $('#info-grid').innerHTML = commonFields.join('');
 
   const permissions = info.permissions || [];
   $('#permission-box').innerHTML = permissions.length
     ? '<b>权限列表（' + permissions.length + '）</b>' + permissions.map((item) => '<div>' + escapeHtml(item) + '</div>').join('')
-    : '<b>权限列表</b><div>未读取到权限，或当前安装包没有声明权限。</div>';
+    : info.type === 'ipa'
+      ? '<b>权限说明</b><div>IPA 不使用 Android 权限清单；当前版本暂不展开隐私用途描述。</div>'
+      : '<b>权限列表</b><div>未读取到权限，或当前安装包没有声明权限。</div>';
+}
+
+function setPlatform(platform) {
+  state.platform = platform === 'ios' ? 'ios' : 'android';
+  const ios = state.platform === 'ios';
+  $('#device-title').textContent = ios ? 'iPhone 设备' : 'Android 设备';
+  $('#device-copy').textContent = ios ? '支持已签名 IPA 安装、应用读取和卸载' : '支持多设备批量安装、卸载和清数据';
+  $('#install-title').textContent = ios ? 'IPA 安装' : 'APK 安装';
+  $('#install-copy').textContent = ios ? '把当前选择的已签名 IPA 安装到选中 iPhone' : '把当前选择的 APK 安装到选中设备';
+  $('#install-button').textContent = ios ? '安装 IPA 到选中 iPhone' : '安装 APK 到选中设备';
+  $('#android-install-options').hidden = ios;
+  $('#clear-selected').hidden = ios;
+  $('#installed-copy').textContent = ios
+    ? '读取选中 iPhone 的 App，选中后可卸载；iOS 不支持电脑直接清除单个 App 数据'
+    : '读取选中设备上的应用，选中后可清除数据或卸载';
+  $('#device-empty').textContent = ios
+    ? '未检测到 iPhone。请连接数据线、解锁手机并信任此电脑。Windows 还需要 Apple Devices 或 iTunes 驱动。'
+    : '未检测到设备，请连接 Android 并开启 USB 调试。';
+  state.devices = [];
+  state.installedPackages = [];
+  state.selectedInstalled = '';
+  renderDevices();
+  renderInstalledPackages();
+}
+
+function applyPackagePlatform(info) {
+  const platform = info?.type === 'ipa' ? 'ios' : 'android';
+  if (state.platform !== platform) setPlatform(platform);
 }
 
 async function inspectFilePath(filePath) {
@@ -102,10 +138,12 @@ async function inspectFilePath(filePath) {
     setStatus('正在解析安装包', 'working');
     state.current = await api.inspectPackage(filePath);
     state.compare = null;
+    applyPackagePlatform(state.current);
     renderPackage(state.current);
     renderCompare();
     setStatus('安装包解析完成', 'done');
     toast('安装包信息已读取');
+    refreshDevices();
   } catch (error) {
     setStatus('解析失败', 'error');
     toast(friendlyError(error, '安装包解析失败'));
@@ -119,9 +157,11 @@ async function selectPackage() {
     if (!info) return;
     state.current = info;
     state.compare = null;
+    applyPackagePlatform(info);
     renderPackage(info);
     renderCompare();
     setStatus('安装包解析完成', 'done');
+    refreshDevices();
   } catch (error) {
     setStatus('解析失败', 'error');
     toast(friendlyError(error, '安装包解析失败'));
@@ -142,10 +182,11 @@ function renderDevices() {
   list.hidden = state.devices.length === 0;
   list.innerHTML = state.devices.map((device) => {
     const ok = device.state === 'device';
+    const platformLabel = device.platform === 'ios' ? 'iOS' : 'Android';
     return '<label class="device-item">' +
       '<input type="checkbox" value="' + escapeHtml(device.serial) + '"' + (ok ? ' checked' : ' disabled') + ' />' +
       '<div><strong>' + escapeHtml(device.model || device.serial) + '</strong><span>' + escapeHtml(device.serial) + '</span></div>' +
-      '<em class="device-state ' + (ok ? '' : 'bad') + '">' + escapeHtml(device.state) + '</em>' +
+      '<em class="device-state ' + (ok ? '' : 'bad') + '">' + platformLabel + ' · ' + escapeHtml(device.state) + '</em>' +
     '</label>';
   }).join('');
   renderInstalledDeviceOptions();
@@ -163,14 +204,19 @@ function renderInstalledDeviceOptions() {
 
 async function refreshDevices() {
   if (!api) return toast('安装包管理能力未初始化');
+  const platform = state.platform;
+  const requestId = ++state.deviceRequestId;
   try {
     setStatus('正在查找设备', 'working');
-    state.devices = await api.listDevices();
+    const devices = await api.listDevices({ platform });
+    if (requestId !== state.deviceRequestId || platform !== state.platform) return;
+    state.devices = devices;
     renderDevices();
     setStatus(state.devices.length ? '设备列表已更新' : '未检测到设备', state.devices.length ? 'done' : 'error');
   } catch (error) {
+    if (requestId !== state.deviceRequestId || platform !== state.platform) return;
     setStatus('设备刷新失败', 'error');
-    toast(friendlyError(error, '设备刷新失败，请确认已安装 ADB'));
+    toast(friendlyError(error, platform === 'ios' ? 'iPhone 刷新失败，请检查连接和 Apple 驱动' : '设备刷新失败，请确认 ADB 可用'));
   }
 }
 
@@ -195,13 +241,15 @@ function renderInstalledPackages() {
   if (!rows.length) {
     $('#installed-empty').textContent = state.installedPackages.length
       ? '没有匹配的安装包，请换个关键字。'
-      : '请选择一台在线设备，然后点击“读取安装包”。';
+      : '请选择一台在线设备，然后点击“读取应用”。';
   }
   list.hidden = rows.length === 0;
   list.innerHTML = rows.map((item) => (
     '<button class="installed-item ' + (state.selectedInstalled === item.packageName ? 'active' : '') + '" data-package="' + escapeHtml(item.packageName) + '">' +
-      '<div><strong>' + escapeHtml(item.packageName) + '</strong><span>' + escapeHtml(item.apkPath || '路径不可用') + '</span></div>' +
-      '<em>' + escapeHtml(item.versionCode ? 'vCode ' + item.versionCode : (item.system ? '系统应用' : '第三方')) + '</em>' +
+      '<div><strong>' + escapeHtml(item.appName || item.packageName) + '</strong><span>' + escapeHtml(item.platform === 'ios' ? item.packageName : (item.apkPath || item.packageName)) + '</span></div>' +
+      '<em>' + escapeHtml(item.platform === 'ios'
+        ? (item.versionName ? 'v' + item.versionName + (item.versionCode ? ' (' + item.versionCode + ')' : '') : '用户 App')
+        : (item.versionCode ? 'vCode ' + item.versionCode : (item.system ? '系统应用' : '第三方'))) + '</em>' +
     '</button>'
   )).join('');
   list.querySelectorAll('.installed-item').forEach((button) => {
@@ -210,9 +258,11 @@ function renderInstalledPackages() {
       renderInstalledPackages();
     });
   });
-  const selected = Boolean(state.selectedInstalled);
-  $('#clear-selected').disabled = !selected;
-  $('#uninstall-selected').disabled = !selected;
+  const selectedItem = state.installedPackages.find((item) => item.packageName === state.selectedInstalled);
+  const selected = Boolean(selectedItem);
+  $('#clear-selected').disabled = !selected || state.platform === 'ios';
+  $('#uninstall-selected').disabled = !selected || Boolean(state.platform === 'ios' && selectedItem.system);
+  $('#uninstall-selected').title = state.platform === 'ios' && selectedItem?.system ? 'iOS 系统 App 不支持卸载' : '';
 }
 
 async function loadInstalledPackages() {
@@ -221,12 +271,12 @@ async function loadInstalledPackages() {
   try {
     setStatus('正在读取设备安装包', 'working');
     state.selectedInstalled = '';
-    state.installedPackages = await api.listInstalled({ serial, includeSystem: $('#include-system').checked });
+    state.installedPackages = await api.listInstalled({ serial, platform: state.platform, includeSystem: $('#include-system').checked });
     renderInstalledPackages();
     setStatus('设备安装包读取完成', 'done');
-    toast('已读取 ' + state.installedPackages.length + ' 个安装包');
+    toast('已读取 ' + state.installedPackages.length + ' 个应用');
   } catch (error) {
-    setStatus('读取安装包失败', 'error');
+    setStatus('读取应用失败', 'error');
     toast(friendlyError(error, '读取设备安装包失败'));
   }
 }
@@ -348,8 +398,8 @@ $('#install-button').addEventListener('click', () => runAction('安装', (serial
   grantPermissions: $('#grant-permissions').checked,
   replace: $('#replace-existing').checked
 })));
-$('#clear-selected').addEventListener('click', () => runInstalledAction('清数据', (serial, packageName) => api.clearData({ serials: [serial], packageName })));
-$('#uninstall-selected').addEventListener('click', () => runInstalledAction('卸载', (serial, packageName) => api.uninstall({ serials: [serial], packageName })));
+$('#clear-selected').addEventListener('click', () => runInstalledAction('清数据', (serial, packageName) => api.clearData({ serials: [serial], packageName, platform: state.platform })));
+$('#uninstall-selected').addEventListener('click', () => runInstalledAction('卸载', (serial, packageName) => api.uninstall({ serials: [serial], packageName, platform: state.platform })));
 
 for (const target of [document.body, $('#package-picker')]) {
   target.addEventListener('dragover', (event) => {

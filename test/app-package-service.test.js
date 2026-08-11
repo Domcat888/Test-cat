@@ -73,6 +73,36 @@ test('parseDeviceList extracts Android model and states', () => {
   assert.equal(devices[0].serial, 'ABC123');
   assert.equal(devices[0].model, 'Pixel 8');
   assert.equal(devices[1].state, 'unauthorized');
+  assert.equal(devices[0].platform, 'android');
+});
+
+test('parseIosDeviceList extracts iPhone identifiers and connection type', () => {
+  const devices = __test.parseIosDeviceList(JSON.stringify([
+    { Identifier: '00008110-TEST', DeviceName: 'QA iPhone', ConnectionType: 'USB' }
+  ]));
+  assert.deepEqual(devices[0], {
+    serial: '00008110-TEST',
+    model: 'QA iPhone',
+    state: 'device',
+    platform: 'ios',
+    connectionType: 'USB',
+    label: 'QA iPhone · 00008110-TEST'
+  });
+});
+
+test('parseIosInstalledPackages supports bundle-id keyed pymobiledevice output', () => {
+  const apps = __test.parseIosInstalledPackages(JSON.stringify({
+    'com.test.cat': {
+      CFBundleDisplayName: 'Test Cat',
+      CFBundleShortVersionString: '2.1',
+      CFBundleVersion: '210',
+      ApplicationType: 'User'
+    }
+  }));
+  assert.equal(apps[0].packageName, 'com.test.cat');
+  assert.equal(apps[0].appName, 'Test Cat');
+  assert.equal(apps[0].versionName, '2.1');
+  assert.equal(apps[0].platform, 'ios');
 });
 
 test('parseInstalledPackages extracts package path, code and app type', () => {
@@ -103,11 +133,50 @@ test('AppPackageService resolves bundled and system ADB candidates', () => {
   assert.equal(new Set(candidates).size, candidates.length);
 });
 
+test('builds bundled iOS runtime candidates for macOS and Windows packages', () => {
+  assert.ok(__test.iosPythonCandidates(['/runtime'], 'darwin', 'arm64', true).some((candidate) => candidate.endsWith('darwin-arm64/bin/python3')));
+  assert.ok(__test.iosPythonCandidates(['/runtime'], 'win32', 'x64', true).some((candidate) => candidate.endsWith('win32-x64/python.exe')));
+});
+
 
 test('classifyInstallFailure explains common adb install failures', () => {
   assert.equal(__test.classifyInstallFailure(new Error('INSTALL_FAILED_VERSION_DOWNGRADE')).code, 'version-downgrade');
   assert.match(__test.classifyInstallFailure({ stderr: 'INSTALL_FAILED_UPDATE_INCOMPATIBLE signatures do not match' }).message, /签名不同/);
   assert.equal(__test.classifyInstallFailure(new Error('INSTALL_FAILED_NO_MATCHING_ABIS')).code, 'abi-mismatch');
+});
+
+test('classifyIosFailure explains trust, driver, and signing failures', () => {
+  assert.equal(__test.classifyIosFailure(new Error('PairingDialogResponsePending')).code, 'not-trusted');
+  assert.equal(__test.classifyIosFailure({ stderr: 'ConnectionFailedToUsbmuxdError: Apple Mobile Device' }).code, 'apple-driver');
+  assert.match(__test.classifyIosFailure({ stderr: 'ApplicationVerificationFailed: A valid provisioning profile was not found' }).message, /描述文件/);
+});
+
+test('installPackage routes IPA files through pymobiledevice3 for every selected iPhone', async () => {
+  const calls = [];
+  const service = new AppPackageService({ dialog: {}, getWindow: () => null });
+  service.ios = async (args, timeout) => {
+    calls.push({ args, timeout });
+    return '';
+  };
+  const results = await service.installPackage({ serials: ['UDID-1', 'UDID-2'], filePath: '/tmp/demo.ipa' });
+  assert.ok(results.every((result) => result.ok));
+  assert.deepEqual(calls[0].args, ['apps', 'install', '/tmp/demo.ipa', '--udid', 'UDID-1']);
+  assert.equal(calls[0].timeout, 10 * 60 * 1000);
+});
+
+test('iOS list and uninstall use the selected UDID and return normalized apps', async () => {
+  const calls = [];
+  const service = new AppPackageService({ dialog: {}, getWindow: () => null });
+  service.ios = async (args) => {
+    calls.push(args);
+    if (args[1] === 'list') return JSON.stringify({ 'com.demo.ios': { CFBundleName: 'Demo', CFBundleVersion: '7' } });
+    return '';
+  };
+  const apps = await service.listInstalledPackages({ platform: 'ios', serial: 'UDID-1' });
+  const results = await service.uninstallPackage({ platform: 'ios', serials: ['UDID-1'], packageName: 'com.demo.ios' });
+  assert.equal(apps[0].packageName, 'com.demo.ios');
+  assert.equal(results[0].ok, true);
+  assert.deepEqual(calls[1], ['apps', 'uninstall', 'com.demo.ios', '--udid', 'UDID-1']);
 });
 
 test('classifyClearDataFailure explains OEM CLEAR_APP_USER_DATA restrictions', () => {

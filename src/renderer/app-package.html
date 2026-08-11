@@ -35,7 +35,7 @@
         <section class="workspace-grid">
           <aside class="device-panel">
             <div class="section-title">
-              <div><h2>Android 设备</h2><p>支持多设备批量安装、卸载和清数据</p></div>
+              <div><h2 id="device-title">Android 设备</h2><p id="device-copy">支持多设备批量安装、卸载和清数据</p></div>
               <button class="secondary" id="refresh-devices">刷新</button>
             </div>
             <div class="device-list" id="device-list"></div>
@@ -44,15 +44,15 @@
 
           <section class="action-panel">
             <div class="section-title">
-              <div><h2>APK 安装</h2><p>把当前选择的 APK 安装到选中设备</p></div>
+              <div><h2 id="install-title">APK 安装</h2><p id="install-copy">把当前选择的 APK 安装到选中设备</p></div>
             </div>
-            <div class="option-grid">
+            <div class="option-grid" id="android-install-options">
               <label><input id="allow-downgrade" type="checkbox" checked /><span>允许降级安装</span></label>
               <label><input id="grant-permissions" type="checkbox" checked /><span>安装后授予运行时权限</span></label>
               <label><input id="replace-existing" type="checkbox" checked /><span>覆盖安装</span></label>
             </div>
             <div class="action-row">
-              <button class="primary" id="install-button" disabled>一键安装到选中设备</button>
+              <button class="primary" id="install-button" disabled>安装到选中设备</button>
             </div>
             <div class="result-list" id="result-list"></div>
           </section>
@@ -60,10 +60,10 @@
 
         <section class="installed-panel">
           <div class="section-title">
-            <div><h2>设备已安装应用</h2><p>读取选中设备上的安装包，选中后可清除数据或卸载</p></div>
+            <div><h2>设备已安装应用</h2><p id="installed-copy">读取选中设备上的安装包，选中后可清除数据或卸载</p></div>
             <div class="installed-tools">
               <label><input id="include-system" type="checkbox" /><span>包含系统应用</span></label>
-              <button class="secondary" id="load-installed">读取安装包</button>
+              <button class="secondary" id="load-installed">读取应用</button>
             </div>
           </div>
           <div class="installed-toolbar">
@@ -73,7 +73,7 @@
             <button class="danger" id="uninstall-selected" disabled>卸载选中应用</button>
           </div>
           <div class="installed-list" id="installed-list"></div>
-          <div class="empty-box" id="installed-empty">请选择一台在线设备，然后点击“读取安装包”。</div>
+          <div class="empty-box" id="installed-empty">请选择一台在线设备，然后点击“读取应用”。</div>
         </section>
 
         <section class="detail-grid">

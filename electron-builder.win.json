@@ -1,0 +1,59 @@
+{
+  "appId": "com.testcat.desktop",
+  "productName": "Test cat",
+  "asar": true,
+  "directories": {
+    "output": "release"
+  },
+  "files": [
+    "src/**/*",
+    "assets/**/*",
+    "resources/**/*",
+    "!resources/ios-performance-runtime/**/*",
+    "!resources/platform-tools/**/*",
+    "CHANGELOG.md",
+    "package.json"
+  ],
+  "asarUnpack": [
+    "src/ios-performance-helper.py"
+  ],
+  "extraResources": [
+    {
+      "from": "resources/ios-performance-runtime/win32-x64",
+      "to": "ios-performance-runtime/win32-x64",
+      "filter": [
+        "**/*"
+      ]
+    },
+    {
+      "from": "resources/platform-tools/win32-x64",
+      "to": "platform-tools/win32-x64",
+      "filter": [
+        "**/*"
+      ]
+    }
+  ],
+  "win": {
+    "icon": "assets/icons/test-cat.ico",
+    "target": [
+      {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      },
+      {
+        "target": "portable",
+        "arch": [
+          "x64"
+        ]
+      }
+    ]
+  },
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "shortcutName": "Test cat"
+  }
+}

@@ -116,7 +116,7 @@ contextBridge.exposeInMainWorld('testCat', {
     selectPackage: () => ipcRenderer.invoke('app-package:select-package'),
     inspectPackage: (filePath) => ipcRenderer.invoke('app-package:inspect-package', filePath),
     pathForFile: (file) => webUtils.getPathForFile(file),
-    listDevices: () => ipcRenderer.invoke('app-package:list-devices'),
+    listDevices: (payload) => ipcRenderer.invoke('app-package:list-devices', payload),
     listInstalled: (payload) => ipcRenderer.invoke('app-package:list-installed', payload),
     install: (payload) => ipcRenderer.invoke('app-package:install', payload),
     uninstall: (payload) => ipcRenderer.invoke('app-package:uninstall', payload),

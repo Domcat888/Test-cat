@@ -1,8 +1,12 @@
 const STORAGE_KEY = 'test-cat-modules-v1';
 const THEME_KEY = 'test-cat-theme';
 const TOOL_ORDER_KEY = 'test-cat-tool-order-v1';
+const PLATFORM_FOLDER_KEY = 'test-cat-platform-folders-v1';
 const TODO_KEY = 'test-cat-todos-v1';
 const BUILT_IN_TOOL_IDS = ['mobile-mirror', 'ios-mirror', 'ios-performance', 'calculator', 'performance-monitor', 'weak-network', 'file-compare', 'log-analysis', 'app-package', 'mock-data', 'timestamp-converter', 'formula-calculator', 'ai-test-assistant'];
+const ANDROID_TOOL_IDS = ['mobile-mirror', 'performance-monitor', 'weak-network', 'log-analysis'];
+const IOS_TOOL_IDS = ['ios-mirror', 'ios-performance'];
+const PLATFORM_TOOL_IDS = new Set([...ANDROID_TOOL_IDS, ...IOS_TOOL_IDS]);
 
 const state = {
   modules: loadModules(),
@@ -12,6 +16,7 @@ const state = {
   page: 'home',
   filter: 'all',
   todoFilter: 'all',
+  collapsedFolders: new Set(loadJson(PLATFORM_FOLDER_KEY, [])),
   draggingToolId: null,
   dragOccurred: false
 };
@@ -302,7 +307,7 @@ function appPackageCard() {
       <div class="module-picture"><img src="../../assets/modules/app-package.png" alt="安装包管理" /></div>
       <span class="built-in-badge">内置工具</span>
       <h3>安装包管理</h3>
-      <p>解析 APK / IPA 信息，批量安装、卸载、清数据并解释安装失败原因。</p>
+      <p>解析 APK / IPA 信息，连接 Android 或 iPhone 安装、卸载，并解释常见失败原因。</p>
       <div class="module-meta"><span class="module-tag">App 测试</span></div>
     </article>`;
 }
@@ -379,6 +384,21 @@ function homeToolCard(id) {
   return module ? moduleCard(module, true) : '';
 }
 
+function platformFolderHtml({ id, title, description, tools, order }) {
+  const collapsed = state.collapsedFolders.has(id);
+  const cards = order.filter((toolId) => tools.includes(toolId)).map(homeToolCard).join('');
+  return `
+    <section class="platform-folder ${id}" data-platform-folder-section="${id}">
+      <button class="platform-folder-header" type="button" data-platform-folder="${id}" aria-expanded="${!collapsed}">
+        <span class="platform-folder-mark">${id === 'android' ? 'Android' : 'iOS'}</span>
+        <span class="platform-folder-copy"><strong>${escapeHtml(title)}</strong><small>${escapeHtml(description)}</small></span>
+        <span class="platform-folder-count">${tools.length} 个工具</span>
+        <span class="platform-folder-chevron" aria-hidden="true">⌄</span>
+      </button>
+      <div class="module-grid platform-folder-grid"${collapsed ? ' hidden' : ''}>${cards}</div>
+    </section>`;
+}
+
 function visibleModules() {
   return state.modules.filter((item) => {
     const categoryMatch = state.filter === 'all' || item.category === state.filter;
@@ -388,9 +408,27 @@ function visibleModules() {
 
 function render() {
   const modules = visibleModules();
+  const order = normalizedToolOrder();
+  const platformCollections = $('#platform-collections');
   const homeGrid = $('#home-module-grid');
   const moduleGrid = $('#module-grid');
-  homeGrid.innerHTML = normalizedToolOrder().map(homeToolCard).join('');
+  platformCollections.innerHTML = [
+    platformFolderHtml({
+      id: 'android',
+      title: 'Android 工具箱',
+      description: '投屏、性能、弱网与日志',
+      tools: ANDROID_TOOL_IDS,
+      order
+    }),
+    platformFolderHtml({
+      id: 'ios',
+      title: 'iOS 工具箱',
+      description: 'iPhone 投屏与性能采集',
+      tools: IOS_TOOL_IDS,
+      order
+    })
+  ].join('');
+  homeGrid.innerHTML = order.filter((id) => !PLATFORM_TOOL_IDS.has(id)).map(homeToolCard).join('');
   moduleGrid.innerHTML = modules.map(moduleCard).join('');
   $('#home-empty').hidden = true;
   homeGrid.hidden = false;
@@ -416,7 +454,7 @@ function moveTool(sourceId, targetId = null) {
 }
 
 function bindToolSorting() {
-  const cards = $$('#home-module-grid [data-tool-id]');
+  const cards = $$('#home-page [data-tool-id]');
   cards.forEach((card) => {
     card.addEventListener('dragstart', (event) => {
       state.draggingToolId = card.dataset.toolId;
@@ -445,17 +483,30 @@ function bindToolSorting() {
     });
   });
 
-  $('#home-module-grid').ondragover = (event) => {
-    if (state.draggingToolId && event.target === event.currentTarget) event.preventDefault();
-  };
-  $('#home-module-grid').ondrop = (event) => {
-    if (event.target !== event.currentTarget) return;
-    event.preventDefault();
-    if (state.draggingToolId) moveTool(state.draggingToolId);
-  };
+  $$('#home-page .module-grid').forEach((grid) => {
+    grid.ondragover = (event) => {
+      if (state.draggingToolId && event.target === event.currentTarget) event.preventDefault();
+    };
+    grid.ondrop = (event) => {
+      if (event.target !== event.currentTarget) return;
+      event.preventDefault();
+      if (state.draggingToolId) moveTool(state.draggingToolId);
+    };
+  });
+}
+
+function bindPlatformFolders() {
+  $$('[data-platform-folder]').forEach((button) => button.addEventListener('click', () => {
+    const id = button.dataset.platformFolder;
+    if (state.collapsedFolders.has(id)) state.collapsedFolders.delete(id);
+    else state.collapsedFolders.add(id);
+    localStorage.setItem(PLATFORM_FOLDER_KEY, JSON.stringify([...state.collapsedFolders]));
+    render();
+  }));
 }
 
 function bindCardActions() {
+  bindPlatformFolders();
   $$('[data-delete]').forEach((button) => button.addEventListener('click', (event) => {
     event.stopPropagation();
     const module = state.modules.find((item) => item.id === button.dataset.delete);
