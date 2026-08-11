@@ -138,7 +138,8 @@ function parseUsbmuxDevices(output) {
   return rows.map((row) => {
     if (typeof row === 'string') return { serial: row, model: 'iPhone', state: 'device', platform: 'ios', source: 'pymobiledevice3' };
     const properties = row?.Properties || row?.properties || row || {};
-    const serial = row?.Identifier || row?.UDID || row?.SerialNumber || properties.SerialNumber || properties.UDID;
+    const serial = row?.Identifier || row?.UDID || row?.SerialNumber || row?.UniqueDeviceID
+      || properties.SerialNumber || properties.UDID || properties.UniqueDeviceID;
     if (!serial) return null;
     return {
       serial: String(serial),

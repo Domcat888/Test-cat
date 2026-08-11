@@ -29,6 +29,8 @@ test('parses graphics, installed apps, and DVT process snapshots', () => {
 test('parses pymobiledevice3 usbmux device rows', () => {
   assert.deepEqual(__test.parseUsbmuxDevices('["UDID12345678"]')[0], { serial: 'UDID12345678', model: 'iPhone', state: 'device', platform: 'ios', source: 'pymobiledevice3' });
   assert.deepEqual(__test.parseUsbmuxDevices('[{"Identifier":"UDID2","Properties":{"DeviceName":"QA iPhone","ConnectionType":"USB"}}]')[0], { serial: 'UDID2', model: 'QA iPhone', state: 'device', platform: 'ios', connectionType: 'USB', source: 'pymobiledevice3' });
+  assert.deepEqual(__test.parseUsbmuxDevices('[{"UniqueDeviceID":"UDID3","DeviceName":"QA iPhone 15","ProductType":"iPhone15,2","ConnectionType":"USB"}]')[0], { serial: 'UDID3', model: 'QA iPhone 15', state: 'device', platform: 'ios', connectionType: 'USB', source: 'pymobiledevice3' });
+  assert.deepEqual(__test.parseUsbmuxDevices('[{"Properties":{"UniqueDeviceID":"UDID4","DeviceName":"QA iPhone 14"}}]')[0], { serial: 'UDID4', model: 'QA iPhone 14', state: 'device', platform: 'ios', connectionType: 'USB', source: 'pymobiledevice3' });
 });
 
 test('builds Python candidates for both Windows and macOS', () => {
