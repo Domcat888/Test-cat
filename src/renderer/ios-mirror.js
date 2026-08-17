@@ -2,11 +2,12 @@ const api = window.testCat?.iosMirror;
 const $ = (selector) => document.querySelector(selector);
 document.body.dataset.platform = window.testCat?.platform || 'browser';
 
-const state = { running: false, focus: false, latestFrame: '' };
+const state = { running: false, focus: false, latestFrame: '', decoder: null, videoConfigured: false, videoTimestamp: 0 };
 const elements = {
   device: $('#ios-device-select'), refresh: $('#ios-refresh'), start: $('#ios-start'), stop: $('#ios-stop'),
   status: $('#ios-status'), statusText: $('#ios-status-text'), viewer: $('#ios-viewer'), placeholder: $('#ios-placeholder'),
-  placeholderTitle: $('#ios-placeholder-title'), placeholderText: $('#ios-placeholder-text'), screen: $('#ios-screen'),
+  placeholderTitle: $('#ios-placeholder-title'), placeholderText: $('#ios-placeholder-text'), screen: $('#ios-screen'), video: $('#ios-video-stream'),
+  canvas: $('#ios-video-canvas'),
   deviceName: $('#ios-device-name'), resolution: $('#ios-resolution'), streamMode: $('#ios-stream-mode'),
   alwaysOnTop: $('#ios-always-on-top'), focus: $('#ios-focus-mode')
 };
@@ -19,6 +20,8 @@ function toast(message) {
 function showPlaceholder(title, text) {
   elements.placeholder.hidden = false;
   elements.screen.hidden = true;
+  elements.video.hidden = true;
+  elements.canvas.hidden = true;
   elements.placeholderTitle.textContent = title;
   elements.placeholderText.textContent = text;
 }
@@ -87,6 +90,14 @@ async function startMirror() {
     state.running = true;
     elements.deviceName.textContent = meta.model || 'iPhone';
     elements.streamMode.textContent = meta.streamMode || 'USB 截图轮询';
+    if (meta.streamUrl) {
+      state.latestFrame = '';
+      elements.screen.hidden = true;
+      elements.video.src = meta.streamUrl;
+      elements.video.hidden = false;
+      elements.placeholder.hidden = true;
+      elements.resolution.textContent = '自动适配';
+    }
     setStatus({ phase: 'streaming', message: `已连接 ${meta.model || 'iPhone'}`, model: meta.model, streamMode: meta.streamMode });
   } catch (error) {
     state.running = false;
@@ -104,7 +115,13 @@ async function stopMirror() {
   finally {
     state.running = false;
     state.latestFrame = '';
+    state.videoConfigured = false;
+    try { state.decoder?.close(); } catch {}
+    state.decoder = null;
     elements.screen.removeAttribute('src');
+    elements.video.removeAttribute('src');
+    elements.video.hidden = true;
+    elements.canvas.hidden = true;
     elements.resolution.textContent = '—';
     showPlaceholder('连接一台 iPhone', '用数据线连接已信任的 iPhone，安装设备桥接工具后即可开始投屏。');
     setStatus({ phase: 'idle', message: 'iOS 投屏已停止' });
@@ -113,11 +130,67 @@ async function stopMirror() {
   }
 }
 
+function hasIdr(bytes) {
+  for (let index = 0; index + 4 < bytes.length; index += 1) {
+    if (bytes[index] === 0 && bytes[index + 1] === 0 && bytes[index + 2] === 0 && bytes[index + 3] === 1
+      && (bytes[index + 4] & 0x1f) === 5) return true;
+  }
+  return false;
+}
+
+function configureVideo(config = {}) {
+  if (typeof VideoDecoder === 'undefined') return toast('当前系统不支持 iOS H.264 硬件解码');
+  try { state.decoder?.close(); } catch {}
+  const width = Number(config.width) || 1170;
+  const height = Number(config.height) || 2532;
+  elements.canvas.width = width;
+  elements.canvas.height = height;
+  elements.resolution.textContent = `${width} × ${height}`;
+  const context = elements.canvas.getContext('2d', { alpha: false, desynchronized: true });
+  state.decoder = new VideoDecoder({
+    output(videoFrame) {
+      context.drawImage(videoFrame, 0, 0, width, height);
+      videoFrame.close();
+      elements.canvas.hidden = false;
+      elements.screen.hidden = true;
+      elements.video.hidden = true;
+      elements.placeholder.hidden = true;
+    },
+    error(error) {
+      toast(`iOS 视频解码失败：${error.message || error}`);
+    }
+  });
+  state.decoder.configure({ codec: config.codec || 'avc1.64002a', optimizeForLatency: true });
+  state.videoConfigured = true;
+  state.videoTimestamp = 0;
+}
+
+function decodeVideoFrame(frame) {
+  if (!state.videoConfigured || !state.decoder) return;
+  const source = frame.data?.type === 'Buffer' ? frame.data.data : frame.data;
+  const bytes = source instanceof Uint8Array ? source : new Uint8Array(source || []);
+  if (!bytes.length) return;
+  try {
+    state.decoder.decode(new EncodedVideoChunk({
+      type: hasIdr(bytes) ? 'key' : 'delta',
+      timestamp: state.videoTimestamp,
+      data: bytes
+    }));
+    state.videoTimestamp += 16667;
+  } catch (error) {
+    toast(`iOS 视频帧处理失败：${error.message || error}`);
+  }
+}
+
 function frameReceived(frame) {
+  if (frame?.kind === 'video-config') return configureVideo(frame.config);
+  if (frame?.kind === 'video-frame') return decodeVideoFrame(frame);
   const dataUrl = String(frame?.dataUrl || '');
   if (!/^data:image\/(?:png|jpeg|jpg|webp);base64,/i.test(dataUrl)) return;
+  const firstFrame = !state.latestFrame;
   state.latestFrame = dataUrl;
-  elements.screen.hidden = true;
+  elements.video.hidden = true;
+  if (firstFrame) elements.screen.hidden = true;
   elements.screen.onload = () => {
     elements.resolution.textContent = `${elements.screen.naturalWidth} × ${elements.screen.naturalHeight}`;
     elements.screen.hidden = false;
@@ -133,7 +206,22 @@ function frameReceived(frame) {
 elements.screen.addEventListener('contextmenu', (event) => event.preventDefault());
 elements.screenshot = $('#ios-screenshot');
 elements.fullscreen = $('#ios-fullscreen');
-elements.screenshot.addEventListener('click', () => {
+elements.screenshot.addEventListener('click', async () => {
+  if (!elements.canvas.hidden && elements.canvas.width && elements.canvas.height) {
+    const link = document.createElement('a');
+    link.href = elements.canvas.toDataURL('image/png');
+    link.download = `test-cat-ios-${Date.now()}.png`;
+    link.click();
+    return;
+  }
+  if (!state.latestFrame && state.running) {
+    try {
+      const frame = await api?.capture();
+      state.latestFrame = String(frame?.dataUrl || '');
+    } catch (error) {
+      return toast(error.message || 'iOS 截图保存失败');
+    }
+  }
   if (!state.latestFrame) return toast('当前没有可保存的 iOS 画面');
   const link = document.createElement('a');
   link.href = state.latestFrame;

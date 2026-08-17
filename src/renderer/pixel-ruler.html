@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>屏幕像素尺 - Test cat</title>
+    <link rel="stylesheet" href="pixel-ruler.css" />
+  </head>
+  <body>
+    <header class="app-header">
+      <img src="../../assets/modules/pixel-ruler.png" alt="" />
+      <div><h1>屏幕像素尺</h1><p>Test cat · UI Inspection</p></div>
+      <span class="ready-dot">● 准备就绪</span>
+    </header>
+    <main>
+      <section class="hero">
+        <div>
+          <span class="eyebrow">全屏 UI 检测</span>
+          <h2>只要显示在电脑屏幕上，就可以测量</h2>
+          <p>适用于 Android / iOS 模拟器、浏览器、设计稿和任何桌面软件。开始后会冻结当前屏幕，方便进行像素级检查。</p>
+        </div>
+        <div class="hero-visual"><img src="../../assets/modules/pixel-ruler.png" alt="屏幕像素尺图标" /></div>
+      </section>
+
+      <section class="workspace">
+        <div class="settings-card">
+          <div class="section-title"><div><h3>开始前设置</h3><p>快捷键可选，不设置也可以直接点击开始。</p></div></div>
+          <label class="field">
+            <span>全局快捷键（可选）</span>
+            <div class="shortcut-row">
+              <input id="shortcut-input" readonly placeholder="点击后按下组合键，Delete 清空" />
+              <button id="save-shortcut-button" class="secondary">保存</button>
+            </div>
+            <small id="shortcut-message">未设置快捷键，可使用开始按钮。</small>
+          </label>
+
+          <div class="toggle-grid">
+            <label><input id="show-rulers" type="checkbox" checked /><span>显示屏幕标尺</span></label>
+            <label><input id="show-guides" type="checkbox" checked /><span>显示对齐辅助线</span></label>
+            <label><input id="show-magnifier" type="checkbox" checked /><span>显示像素放大镜</span></label>
+          </div>
+
+          <div class="reference-box" id="reference-box">
+            <input id="reference-input" type="file" accept="image/png,image/jpeg,image/webp" hidden />
+            <div class="reference-preview" id="reference-preview"><span>＋</span></div>
+            <div><strong id="reference-name">透明叠加参考图</strong><p>可选设计稿或历史截图；进入测量后可调整透明度、位置和大小。</p></div>
+            <button id="choose-reference-button" class="secondary">选择图片</button>
+            <button id="clear-reference-button" class="ghost" hidden>移除</button>
+          </div>
+
+          <button id="start-button" class="start-button"><span>⌖</span> 开始屏幕测量</button>
+          <p class="start-tip" id="status-message">启动后：拖拽框选元素，连续框选两个区域即可测量间距。</p>
+        </div>
+
+        <aside class="feature-card">
+          <h3>本次可用功能</h3>
+          <ul>
+            <li><b>坐标与尺寸</b><span>X / Y / W / H 原始屏幕像素</span></li>
+            <li><b>屏幕标尺</b><span>横纵刻度与十字准星</span></li>
+            <li><b>间距测量</b><span>两个区域的水平、垂直距离</span></li>
+            <li><b>对齐检测</b><span>边缘、中心线与偏移量</span></li>
+            <li><b>色值吸取</b><span>HEX、RGB 与像素放大镜</span></li>
+            <li><b>透明叠加</b><span>参考图透明度、缩放和拖动</span></li>
+            <li><b>结果导出</b><span>复制检测文案或保存标注截图</span></li>
+          </ul>
+        </aside>
+      </section>
+    </main>
+    <script src="pixel-ruler.js"></script>
+  </body>
+</html>

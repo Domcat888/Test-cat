@@ -1,4 +1,5 @@
 const api = window.testCat?.appPackage;
+const requestedPlatform = new URLSearchParams(window.location.search).get('platform');
 
 const state = {
   current: null,
@@ -7,6 +8,7 @@ const state = {
   installedPackages: [],
   selectedInstalled: '',
   platform: 'android',
+  lockedPlatform: ['ios', 'android'].includes(requestedPlatform) ? requestedPlatform : 'android',
   deviceRequestId: 0,
   busy: false
 };
@@ -104,6 +106,32 @@ function renderPackage(info) {
       : '<b>权限列表</b><div>未读取到权限，或当前安装包没有声明权限。</div>';
 }
 
+function clearSelectedPackage() {
+  state.current = null;
+  state.compare = null;
+  $('#install-button').disabled = true;
+  $('#package-summary').innerHTML = '<div class="empty-copy"><b>先选一个' + (state.lockedPlatform === 'ios' ? ' IPA' : ' APK') + '</b><span>会自动读取包名、版本、签名、SDK 和文件指纹。</span></div>';
+  $('#info-grid').innerHTML = '';
+  $('#permission-box').innerHTML = '';
+  $('#result-list').innerHTML = '';
+  renderCompare();
+}
+
+function assertAllowedPackage(info) {
+  if (state.lockedPlatform === 'ios' && info?.type !== 'ipa') throw new Error('IPA 管理仅支持 .ipa 文件，请选择 iOS 安装包。');
+  if (state.lockedPlatform === 'android' && info?.type !== 'apk') throw new Error('APK 管理仅支持 .apk 文件，请选择 Android 安装包。');
+  return info;
+}
+
+function updateWindowCopy() {
+  const iosOnly = state.lockedPlatform === 'ios';
+  document.title = iosOnly ? 'IPA 管理 - Test cat' : 'APK 管理 - Test cat';
+  $('.package-brand strong').textContent = iosOnly ? 'IPA 管理' : 'APK 管理';
+  $('.package-brand span').textContent = iosOnly ? 'Test cat · iOS App Lab' : 'Test cat · Android APK Lab';
+  $('#package-picker strong').textContent = iosOnly ? '选择 IPA' : '选择 APK';
+  $('#package-picker small').textContent = iosOnly ? '选择已签名 IPA，也可以直接拖到这里' : '选择 Android APK，也可以直接拖到这里';
+}
+
 function setPlatform(platform) {
   state.platform = platform === 'ios' ? 'ios' : 'android';
   const ios = state.platform === 'ios';
@@ -136,7 +164,7 @@ async function inspectFilePath(filePath) {
   if (!api) return toast('安装包管理能力未初始化');
   try {
     setStatus('正在解析安装包', 'working');
-    state.current = await api.inspectPackage(filePath);
+    state.current = assertAllowedPackage(await api.inspectPackage(filePath));
     state.compare = null;
     applyPackagePlatform(state.current);
     renderPackage(state.current);
@@ -153,7 +181,7 @@ async function inspectFilePath(filePath) {
 async function selectPackage() {
   if (!api) return toast('安装包管理能力未初始化');
   try {
-    const info = await api.selectPackage();
+    const info = assertAllowedPackage(await api.selectPackage({ platform: state.lockedPlatform || state.platform }));
     if (!info) return;
     state.current = info;
     state.compare = null;
@@ -329,7 +357,7 @@ async function runAction(name, runner) {
 async function chooseComparePackage() {
   if (!api) return toast('安装包管理能力未初始化');
   try {
-    const info = await api.selectPackage();
+    const info = assertAllowedPackage(await api.selectPackage({ platform: state.lockedPlatform || state.platform }));
     if (!info) return;
     state.compare = info;
     renderCompare();
@@ -418,6 +446,17 @@ for (const target of [document.body, $('#package-picker')]) {
 }
 
 document.body.dataset.platform = window.testCat?.platform || '';
+api?.onPlatform((platform) => {
+  const nextPlatform = platform === 'ios' ? 'ios' : 'android';
+  const packageMatches = !state.current || (nextPlatform === 'ios' ? state.current.type === 'ipa' : state.current.type === 'apk');
+  state.lockedPlatform = nextPlatform;
+  updateWindowCopy();
+  if (!packageMatches) clearSelectedPackage();
+  if (state.platform !== state.lockedPlatform) setPlatform(state.lockedPlatform);
+  refreshDevices();
+});
+setPlatform(state.lockedPlatform);
+updateWindowCopy();
 renderCompare();
 renderInstalledPackages();
 refreshDevices();

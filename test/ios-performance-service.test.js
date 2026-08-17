@@ -68,6 +68,12 @@ test('classifies iOS diagnostic logs and extracts crash summaries', () => {
     __test.macTunnelCommand("/Applications/Test Cat/python", ['-m', 'pymobiledevice3', 'remote', 'tunneld']),
     "'/Applications/Test Cat/python' '-m' 'pymobiledevice3' 'remote' 'tunneld' </dev/null >/tmp/test-cat-ios-tunneld.log 2>&1 &"
   );
+  assert.equal(__test.needsMacRuntimeStage('/Users/qa/Documents/Test Cat/python'), true);
+  assert.equal(__test.needsMacRuntimeStage('/Applications/Test Cat/python'), false);
+  assert.match(
+    __test.macTunnelCommand('/private/tmp/test-cat-ios/bin/python3', ['remote', 'tunneld'], '/private/tmp/test-cat-ios'),
+    /^\/usr\/sbin\/chown -R root:wheel.*PYTHONHOME='\/private\/tmp\/test-cat-ios'/
+  );
 });
 
 test('collects only the latest safe diagnostic log for each IPM category', async () => {
@@ -98,11 +104,43 @@ test('starts a cross-platform iOS performance session with selected metrics', as
   const service = new IosPerformanceService({ onSample: () => {}, onStatus: (status) => statuses.push(status) });
   service.checkEnvironment = async () => ({ ready: true, python: '/usr/local/bin/python3', message: 'ready' });
   service.listDevices = async () => [{ serial: 'UDID12345678', model: 'QA iPhone' }];
+  service.startPersistentCollector = async () => {};
   service.scheduleSample = () => {};
   const meta = await service.start({ serial: 'UDID12345678', metrics: ['cpu', 'graphics', 'invalid'], interval: 100, autoMount: false, autoTunnel: false });
   assert.deepEqual(meta.metrics, ['cpu', 'graphics']);
   assert.equal(meta.interval, 1000);
   assert.equal(meta.model, 'QA iPhone');
+  assert.equal(meta.collectorMode, 'persistent');
   assert.equal(statuses.at(-1).phase, 'streaming');
   await service.stop(false);
+});
+
+test('normalizes samples emitted by the persistent iOS collector', () => {
+  const samples = [];
+  const service = new IosPerformanceService({ onSample: (sample) => samples.push(sample) });
+  const session = {
+    serial: 'UDID1', model: 'QA iPhone', startedAt: 1000, sampleIndex: 0,
+    metrics: ['cpu', 'memory', 'thermal', 'graphics', 'app'],
+    app: { name: 'Demo', executable: 'Demo' }
+  };
+  const sample = service.handlePersistentSample(session, {
+    timestamp: 3000,
+    system: { cpuUsage: 25, enabledCpuCount: 6, memoryUsed: 1024, memoryTotal: 4096 },
+    thermal: { Temperature: 3650, BatteryCurrentCapacity: 80, IsCharging: true },
+    graphics: { fps: 60, gpuUsage: 22 },
+    app: { cpuUsage: 8, memoryUsed: 2048 }
+  });
+  assert.equal(sample.elapsed, 2);
+  assert.equal(sample.cpuUsage, 25);
+  assert.equal(sample.batteryTemperature, 36.5);
+  assert.equal(sample.fps, 60);
+  assert.equal(sample.appMemory, 2048);
+  assert.equal(samples.length, 1);
+});
+
+test('waits for the selected iPhone to finish privileged tunnel pairing', async () => {
+  const service = new IosPerformanceService();
+  service.tunnelDevices = async () => ({ 'UDID12345678': ['fd00::1', 62078] });
+  assert.equal(await service.waitForTunnelDevice('UDID12345678', 50), true);
+  assert.equal(await service.waitForTunnelDevice('', 50), false);
 });

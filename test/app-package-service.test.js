@@ -90,6 +90,26 @@ test('parseIosDeviceList extracts iPhone identifiers and connection type', () =>
   });
 });
 
+test('IPA manager limits the file picker to iOS packages', async () => {
+  let options;
+  const service = new AppPackageService({
+    dialog: { showOpenDialog: async (_window, value) => { options = value; return { canceled: true, filePaths: [] }; } }
+  });
+  assert.equal(await service.selectPackage({ platform: 'ios' }), null);
+  assert.equal(options.title, '选择 iOS IPA');
+  assert.deepEqual(options.filters, [{ name: 'iOS IPA', extensions: ['ipa'] }]);
+});
+
+test('APK manager limits the file picker to Android packages', async () => {
+  let options;
+  const service = new AppPackageService({
+    dialog: { showOpenDialog: async (_window, value) => { options = value; return { canceled: true, filePaths: [] }; } }
+  });
+  assert.equal(await service.selectPackage({ platform: 'android' }), null);
+  assert.equal(options.title, '选择 Android APK');
+  assert.deepEqual(options.filters, [{ name: 'Android APK', extensions: ['apk'] }]);
+});
+
 test('parseIosInstalledPackages supports bundle-id keyed pymobiledevice output', () => {
   const apps = __test.parseIosInstalledPackages(JSON.stringify({
     'com.test.cat': {

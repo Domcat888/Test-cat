@@ -14,6 +14,8 @@ const weakNetworkStatsListeners = new Set();
 const logAnalysisLogListeners = new Set();
 const logAnalysisStatusListeners = new Set();
 const captureNoticeListeners = new Set();
+const pixelRulerNoticeListeners = new Set();
+const appPackagePlatformListeners = new Set();
 const companionPetSettingsListeners = new Set();
 const companionPetReminderListeners = new Set();
 const companionPetWalkListeners = new Set();
@@ -66,6 +68,12 @@ ipcRenderer.on('log-analysis:status', (_event, status) => {
 ipcRenderer.on('capture:notice', (_event, message) => {
   for (const listener of captureNoticeListeners) listener(message);
 });
+ipcRenderer.on('pixel-ruler:notice', (_event, message) => {
+  for (const listener of pixelRulerNoticeListeners) listener(message);
+});
+ipcRenderer.on('app-package:set-platform', (_event, platform) => {
+  for (const listener of appPackagePlatformListeners) listener(platform);
+});
 ipcRenderer.on('companion-pet:settings-changed', (_event, snapshot) => {
   for (const listener of companionPetSettingsListeners) listener(snapshot);
 });
@@ -108,15 +116,19 @@ contextBridge.exposeInMainWorld('testCat', {
     }
   },
   appPackage: {
-    openWindow: () => ipcRenderer.invoke('app-package:open-window'),
-    selectPackage: () => ipcRenderer.invoke('app-package:select-package'),
+    openWindow: (payload) => ipcRenderer.invoke('app-package:open-window', payload),
+    selectPackage: (payload) => ipcRenderer.invoke('app-package:select-package', payload),
     inspectPackage: (filePath) => ipcRenderer.invoke('app-package:inspect-package', filePath),
     pathForFile: (file) => webUtils.getPathForFile(file),
     listDevices: (payload) => ipcRenderer.invoke('app-package:list-devices', payload),
     listInstalled: (payload) => ipcRenderer.invoke('app-package:list-installed', payload),
     install: (payload) => ipcRenderer.invoke('app-package:install', payload),
     uninstall: (payload) => ipcRenderer.invoke('app-package:uninstall', payload),
-    clearData: (payload) => ipcRenderer.invoke('app-package:clear-data', payload)
+    clearData: (payload) => ipcRenderer.invoke('app-package:clear-data', payload),
+    onPlatform: (listener) => {
+      appPackagePlatformListeners.add(listener);
+      return () => appPackagePlatformListeners.delete(listener);
+    }
   },
   mockData: {
     openWindow: () => ipcRenderer.invoke('mock-data:open-window'),
@@ -132,20 +144,6 @@ contextBridge.exposeInMainWorld('testCat', {
     copyText: (value) => ipcRenderer.invoke('formula-calculator:copy-text', value),
     exportData: (payload) => ipcRenderer.invoke('formula-calculator:export-data', payload),
     importData: () => ipcRenderer.invoke('formula-calculator:import-data')
-  },
-  aiTestAssistant: {
-    openWindow: () => ipcRenderer.invoke('ai-test-assistant:open-window'),
-    getSettings: () => ipcRenderer.invoke('ai-test-assistant:get-settings'),
-    saveSettings: (settings) => ipcRenderer.invoke('ai-test-assistant:save-settings', settings),
-    testConnection: () => ipcRenderer.invoke('ai-test-assistant:test-connection'),
-    selectRequirementFile: () => ipcRenderer.invoke('ai-test-assistant:select-requirement-file'),
-    extractRequirementFile: (filePath) => ipcRenderer.invoke('ai-test-assistant:extract-requirement-file', filePath),
-    pathForFile: (file) => webUtils.getPathForFile(file),
-    runTask: (payload) => ipcRenderer.invoke('ai-test-assistant:run-task', payload),
-    generateTestCases: (payload) => ipcRenderer.invoke('ai-test-assistant:generate-test-cases', payload),
-    exportExcel: (payload) => ipcRenderer.invoke('ai-test-assistant:export-excel', payload),
-    exportXmind: (payload) => ipcRenderer.invoke('ai-test-assistant:export-xmind', payload),
-    copyText: (value) => ipcRenderer.invoke('ai-test-assistant:copy-text', value)
   },
   companionPet: {
     getSettings: () => ipcRenderer.invoke('companion-pet:get-settings'),
@@ -180,6 +178,21 @@ contextBridge.exposeInMainWorld('testCat', {
   },
   calculator: {
     openWindow: () => ipcRenderer.invoke('calculator:open-window')
+  },
+  pixelRuler: {
+    openWindow: () => ipcRenderer.invoke('pixel-ruler:open-window'),
+    getSettings: () => ipcRenderer.invoke('pixel-ruler:get-settings'),
+    saveSettings: (settings) => ipcRenderer.invoke('pixel-ruler:save-settings', settings),
+    start: (options) => ipcRenderer.invoke('pixel-ruler:start', options),
+    stop: () => ipcRenderer.invoke('pixel-ruler:stop'),
+    getPayload: (id) => ipcRenderer.invoke('pixel-ruler:get-payload', id),
+    copyText: (value) => ipcRenderer.invoke('pixel-ruler:copy-text', value),
+    copyImage: (dataUrl) => ipcRenderer.invoke('pixel-ruler:copy-image', dataUrl),
+    saveImage: (dataUrl) => ipcRenderer.invoke('pixel-ruler:save-image', dataUrl),
+    onNotice: (listener) => {
+      pixelRulerNoticeListeners.add(listener);
+      return () => pixelRulerNoticeListeners.delete(listener);
+    }
   },
   performanceMonitor: {
     openWindow: () => ipcRenderer.invoke('performance-monitor:open-window'),
@@ -298,6 +311,7 @@ contextBridge.exposeInMainWorld('testCat', {
     listDevices: () => ipcRenderer.invoke('ios-mirror:list-devices'),
     start: (configuration) => ipcRenderer.invoke('ios-mirror:start', configuration),
     stop: () => ipcRenderer.invoke('ios-mirror:stop'),
+    capture: () => ipcRenderer.invoke('ios-mirror:capture'),
     onFrame: (listener) => {
       iosMirrorFrameListeners.add(listener);
       return () => iosMirrorFrameListeners.delete(listener);

@@ -12,7 +12,7 @@
     <div class="mirror-window-shell">
       <header class="mirror-window-titlebar">
         <div class="mirror-window-brand">
-          <img src="../../assets/modules/ios-mirror.png" alt="" />
+          <img src="../../assets/modules/mobile-mirror.png" alt="" />
           <div><strong>iOS 投屏</strong><span>Test cat · iPhone view only</span></div>
         </div>
         <label class="mirror-pin" title="让投屏画面保持在其他软件上方">
@@ -41,11 +41,13 @@
           <div class="mirror-stage" id="ios-viewer">
             <button class="mirror-focus-toggle" id="ios-focus-mode" type="button" aria-pressed="false">⛶ 大画面</button>
             <div class="mirror-placeholder" id="ios-placeholder">
-              <img src="../../assets/modules/ios-mirror.png" alt="" />
+              <img src="../../assets/modules/mobile-mirror.png" alt="" />
               <h2 id="ios-placeholder-title">连接一台 iPhone</h2>
               <p id="ios-placeholder-text">用数据线连接已信任的 iPhone，安装设备桥接工具后即可开始投屏。</p>
               <ol><li>安装截图工具</li><li>连接并信任 iPhone</li><li>选择设备开始投屏</li></ol>
             </div>
+            <iframe id="ios-video-stream" title="iPhone 实时投屏" hidden></iframe>
+            <canvas id="ios-video-canvas" aria-label="iPhone 实时画面" hidden></canvas>
             <img id="ios-screen" alt="iPhone 实时画面" hidden draggable="false" />
           </div>
 
@@ -53,7 +55,7 @@
             <div class="mirror-device-info">
               <span>当前设备</span><strong id="ios-device-name">尚未连接</strong>
               <small>画面尺寸 <b id="ios-resolution">—</b></small>
-              <small>传输方式 <b id="ios-stream-mode">USB 截图轮询</b></small>
+              <small>传输方式 <b id="ios-stream-mode">等待连接</b></small>
             </div>
             <div class="mirror-control-group">
               <h3>画面工具</h3>

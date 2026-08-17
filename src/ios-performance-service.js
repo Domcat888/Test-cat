@@ -1,5 +1,6 @@
 const { execFile, spawn } = require('node:child_process');
 const { promisify } = require('node:util');
+const fs = require('node:fs/promises');
 const http = require('node:http');
 const path = require('node:path');
 const { setTimeout: wait } = require('node:timers/promises');
@@ -10,6 +11,7 @@ const PAGE_SIZE = 16 * 1024;
 const DEFAULT_INTERVAL = 2000;
 const MAX_DIAGNOSTIC_LOG_SIZE = 2 * 1024 * 1024;
 const ALLOWED_METRICS = new Set(['cpu', 'memory', 'thermal', 'graphics', 'app']);
+const MAC_RUNTIME_STAGE_VERSION = 'py310-pmd3-10.3.1-v1';
 
 function cleanOutput(value) {
   return String(value || '').replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '').trim();
@@ -36,8 +38,17 @@ function appleScriptString(value) {
   return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
-function macTunnelCommand(python, args) {
-  return `${[python, ...args].map(shellQuote).join(' ')} </dev/null >/tmp/test-cat-ios-tunneld.log 2>&1 &`;
+function macTunnelCommand(python, args, protectedRuntimeRoot = '') {
+  const launch = `${[python, ...args].map(shellQuote).join(' ')} </dev/null >/tmp/test-cat-ios-tunneld.log 2>&1 &`;
+  if (!protectedRuntimeRoot) return launch;
+  const root = shellQuote(protectedRuntimeRoot);
+  return `/usr/sbin/chown -R root:wheel ${root} && /bin/chmod -R go-w ${root} && PYTHONHOME=${root} PYTHONNOUSERSITE=1 ${launch}`;
+}
+
+function needsMacRuntimeStage(pythonPath) {
+  const normalized = path.resolve(String(pythonPath || ''));
+  return [`${path.sep}Documents${path.sep}`, `${path.sep}Desktop${path.sep}`, `${path.sep}Downloads${path.sep}`]
+    .some((segment) => normalized.includes(segment));
 }
 
 function parseSystemSnapshot(output) {
@@ -292,6 +303,32 @@ class IosPerformanceService {
     }
   }
 
+  async privilegedMacPythonPath(python) {
+    if (process.platform !== 'darwin' || this.packaged || !this.bundledPython.includes(python) || !needsMacRuntimeStage(python)) {
+      return { python, protectedRuntimeRoot: '' };
+    }
+    const uid = typeof process.getuid === 'function' ? process.getuid() : 'user';
+    const sourceRoot = path.dirname(path.dirname(python));
+    const stageRoot = path.join('/private/tmp', `test-cat-ios-runtime-${uid}-${process.arch}-${MAC_RUNTIME_STAGE_VERSION}`);
+    const stagePython = path.join(stageRoot, 'bin', 'python3');
+    try {
+      await execFileAsync(stagePython, ['-c', 'import pymobiledevice3, encodings'], { timeout: 8000, windowsHide: true, maxBuffer: 512 * 1024 });
+      return { python: stagePython, protectedRuntimeRoot: stageRoot };
+    } catch {}
+
+    const stagingRoot = `${stageRoot}.staging-${process.pid}`;
+    await fs.rm(stagingRoot, { recursive: true, force: true });
+    await fs.cp(sourceRoot, stagingRoot, { recursive: true, force: true, preserveTimestamps: true });
+    try {
+      await fs.rename(stagingRoot, stageRoot);
+    } catch (error) {
+      await fs.rm(stagingRoot, { recursive: true, force: true });
+      if (error.code !== 'EEXIST' && error.code !== 'ENOTEMPTY') throw error;
+    }
+    await execFileAsync(stagePython, ['-c', 'import pymobiledevice3, encodings'], { timeout: 8000, windowsHide: true, maxBuffer: 512 * 1024 });
+    return { python: stagePython, protectedRuntimeRoot: stageRoot };
+  }
+
   async checkEnvironment() {
     if (!['win32', 'darwin'].includes(process.platform)) {
       return { ready: false, python: null, message: 'iOS 性能采集目前支持 Windows 和 macOS。' };
@@ -379,8 +416,117 @@ class IosPerformanceService {
       sampleIndex: 0
     };
     this.onStatus({ phase: 'streaming', message: `iOS 性能采集已开始：${this.session.model}`, serial, model: this.session.model, metrics, bundledRuntime: environment.bundled, platformSupported: true });
-    this.scheduleSample(0);
-    return { serial, model: this.session.model, metrics, interval: this.session.interval, startedAt: this.session.startedAt, bundledRuntime: environment.bundled, developerImageReady, tunnelReady, platformSupported: true };
+    try {
+      await this.startPersistentCollector(this.session);
+      this.session.collectorMode = 'persistent';
+      this.onStatus({ phase: 'streaming', message: `iOS 持续性能采集已开始：${this.session.model}`, serial, model: this.session.model, metrics, collectorMode: 'persistent' });
+    } catch (error) {
+      await this.stopPersistentCollector(this.session);
+      this.session.collectorMode = 'legacy';
+      this.onStatus({ phase: 'warning', message: `持续采集引擎启动失败，已切换兼容采集：${error.message}` });
+      this.scheduleSample(0);
+    }
+    return { serial, model: this.session.model, metrics, interval: this.session.interval, startedAt: this.session.startedAt, bundledRuntime: environment.bundled, developerImageReady, tunnelReady, collectorMode: this.session.collectorMode, platformSupported: true };
+  }
+
+  async startPersistentCollector(session) {
+    const python = await this.pythonPath();
+    const helper = await this.resolveHelperPath();
+    if (!python || !helper) throw new Error('iOS 持续采集组件不可用。');
+    const args = [
+      helper, 'monitor', '--udid', session.serial,
+      '--interval-ms', String(session.interval),
+      '--metrics', session.metrics.join(','),
+      '--app-executable', session.app?.executable || ''
+    ];
+    const child = spawn(python, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    session.collectorProcess = child;
+    session.collectorBuffer = '';
+    session.collectorError = '';
+    let settled = false;
+    let resolveReady;
+    let rejectReady;
+    const ready = new Promise((resolve, reject) => { resolveReady = resolve; rejectReady = reject; });
+    const settle = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      fn(value);
+    };
+    const timeout = setTimeout(() => settle(rejectReady, new Error('首个性能采样等待超时')), 20000);
+    child.stderr.on('data', (chunk) => {
+      session.collectorError = `${session.collectorError}${chunk}`.slice(-8000);
+    });
+    child.stdout.on('data', (chunk) => {
+      session.collectorBuffer += chunk.toString('utf8');
+      const lines = session.collectorBuffer.split(/\r?\n/);
+      session.collectorBuffer = lines.pop() || '';
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const payload = JSON.parse(line);
+          if (this.session !== session || session.stopped) continue;
+          this.handlePersistentSample(session, payload);
+          clearTimeout(timeout);
+          settle(resolveReady, true);
+        } catch {}
+      }
+    });
+    child.once('error', (error) => settle(rejectReady, error));
+    child.once('exit', (code, signal) => {
+      clearTimeout(timeout);
+      if (session.stopped) return;
+      const message = cleanOutput(session.collectorError) || `持续采集进程已退出（${code ?? signal}）`;
+      settle(rejectReady, new Error(message));
+      if (session.collectorMode === 'persistent' && this.session === session) {
+        session.collectorMode = 'legacy';
+        session.collectorProcess = null;
+        this.onStatus({ phase: 'warning', message: `持续采集已中断，正在使用兼容采集：${message.slice(-300)}` });
+        this.scheduleSample(0);
+      }
+    });
+    try {
+      await ready;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  handlePersistentSample(session, payload) {
+    session.sampleIndex += 1;
+    const timestamp = Number(payload?.timestamp) || Date.now();
+    const sample = {
+      timestamp,
+      elapsed: Math.max(0, (timestamp - session.startedAt) / 1000),
+      serial: session.serial,
+      model: session.model,
+      app: session.app,
+      quality: {}
+    };
+    if (session.metrics.includes('cpu') || session.metrics.includes('memory')) {
+      if (payload.system) this.applyMetricResult(sample, 'system', payload.system);
+      else this.markUnavailable(sample, 'system', '持续采集尚未返回系统指标');
+    }
+    if (session.metrics.includes('thermal')) {
+      if (payload.thermal && !payload.thermal._error) this.applyMetricResult(sample, 'thermal', parseBatterySnapshot(JSON.stringify(payload.thermal)));
+      else this.markUnavailable(sample, 'thermal', payload.thermal?._error || '温度按低频采集，正在等待首次结果');
+    }
+    if (session.metrics.includes('graphics')) {
+      if (payload.graphics && !payload.graphics._error) this.applyMetricResult(sample, 'graphics', payload.graphics);
+      else this.markUnavailable(sample, 'graphics', payload.graphics?._error || '持续采集尚未返回图形指标');
+    }
+    if (session.metrics.includes('app')) {
+      if (payload.app) this.applyMetricResult(sample, 'app', payload.app);
+      else this.markUnavailable(sample, 'app', `${session.app?.name || '目标 App'} 当前未运行或未匹配到进程`);
+    }
+    this.onSample(sample);
+    return sample;
+  }
+
+  async stopPersistentCollector(session) {
+    const child = session?.collectorProcess;
+    if (!child) return;
+    session.collectorProcess = null;
+    if (child.exitCode === null && !child.killed) child.kill('SIGTERM');
   }
 
   async prepareDeveloperImage(serial) {
@@ -598,7 +744,8 @@ class IosPerformanceService {
       return { started: true, managed: false };
     }
     if (process.platform === 'darwin') {
-      const command = macTunnelCommand(python, args);
+      const privilegedRuntime = await this.privilegedMacPythonPath(python);
+      const command = macTunnelCommand(privilegedRuntime.python, args, privilegedRuntime.protectedRuntimeRoot);
       await execFileAsync('/usr/bin/osascript', ['-e', `do shell script "${appleScriptString(command)}" with administrator privileges`], { timeout: 120000, windowsHide: true });
       if (!await this.waitForTunnel(10000)) throw new Error('iOS 性能桥接启动失败，请确认管理员授权后重试。');
       this.onStatus({ phase: 'tunnel', message: '已通过系统授权启动 iOS 性能桥接。' });
@@ -635,6 +782,33 @@ class IosPerformanceService {
     return false;
   }
 
+  tunnelDevices() {
+    return new Promise((resolve) => {
+      const request = http.get('http://127.0.0.1:49151/', { timeout: 1200 }, (response) => {
+        let body = '';
+        response.setEncoding('utf8');
+        response.on('data', (chunk) => { body += chunk; });
+        response.on('end', () => {
+          try { resolve(JSON.parse(body || '{}')); } catch { resolve({}); }
+        });
+      });
+      request.on('timeout', () => { request.destroy(); resolve({}); });
+      request.on('error', () => resolve({}));
+    });
+  }
+
+  async waitForTunnelDevice(serial, timeout = 45000) {
+    const target = String(serial || '').trim();
+    if (!target) return false;
+    const deadline = Date.now() + timeout;
+    while (Date.now() < deadline) {
+      const devices = await this.tunnelDevices();
+      if (Object.keys(devices || {}).some((key) => key === target || key.startsWith(`${target}:`))) return true;
+      await wait(500);
+    }
+    return false;
+  }
+
   async stop(announce = true) {
     const session = this.session;
     this.session = null;
@@ -646,6 +820,7 @@ class IosPerformanceService {
     }
     if (!session) return null;
     session.stopped = true;
+    await this.stopPersistentCollector(session);
     if (announce) this.onStatus({ phase: 'idle', message: 'iOS 性能采集已停止' });
     return { serial: session.serial, model: session.model, startedAt: session.startedAt, endedAt: Date.now() };
   }
@@ -661,6 +836,7 @@ module.exports = {
     diagnosticSummary,
     diagnosticType,
     macTunnelCommand,
+    needsMacRuntimeStage,
     shellQuote,
     parseBatterySnapshot,
     parseGraphicsSnapshot,

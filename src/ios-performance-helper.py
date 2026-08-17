@@ -1,16 +1,24 @@
 import argparse
 import asyncio
+import dataclasses
 import json
+import os
 import posixpath
+import signal
 import sys
 from datetime import date, datetime
 from typing import Any
 
 from pymobiledevice3.lockdown import create_using_usbmux
 from pymobiledevice3.services.crash_reports import CrashReportsManager
+from pymobiledevice3.services.diagnostics import DiagnosticsService
 from pymobiledevice3.services.dvt.instruments.dvt_provider import DvtProvider
 from pymobiledevice3.services.dvt.instruments.graphics import Graphics
+from pymobiledevice3.services.dvt.instruments.sysmontap import Sysmontap
 from pymobiledevice3.tunneld.api import get_tunneld_device_by_udid
+
+
+PAGE_SIZE = 16 * 1024
 
 
 def json_value(value: Any) -> Any:
@@ -69,6 +77,171 @@ async def graphics_sample(udid: str, timeout: float) -> dict[str, float]:
     finally:
         if lockdown is not None:
             await lockdown.close()
+
+
+def _number(value: Any) -> float | None:
+    try:
+        result = float(value)
+        return result if result == result else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_system(system: dict[str, Any]) -> dict[str, Any]:
+    total_load = _number(system.get("CPU_TotalLoad"))
+    cores = _number(first_value(system.get("EnabledCPUs"), system.get("CPUCount")))
+    cpu_usage = max(0.0, min(100.0, total_load / cores)) if total_load is not None and cores and cores > 0 else None
+    used = _number(system.get("vmUsedCount"))
+    free = _number(system.get("vmFreeCount"))
+    external = _number(system.get("vmExtPageCount"))
+    memory_used = memory_total = None
+    if used is not None and free is not None and external is not None and min(used, free, external) >= 0 and external <= used:
+        memory_used = (used - external) * PAGE_SIZE
+        memory_total = (used + free) * PAGE_SIZE
+        if memory_total <= 0 or memory_used > memory_total:
+            memory_used = memory_total = None
+    return {
+        "cpuUsage": cpu_usage,
+        "enabledCpuCount": cores,
+        "memoryUsed": memory_used,
+        "memoryTotal": memory_total,
+    }
+
+
+def _find_process(rows: list[dict[str, Any]], executable: str) -> dict[str, Any] | None:
+    expected = os.path.basename(executable or "").lower()
+    if not expected:
+        return None
+    for row in rows:
+        names = [row.get(key) for key in ("name", "execName", "executable", "processName", "command")]
+        normalized = [os.path.basename(str(value)).lower() for value in names if value]
+        if expected in normalized:
+            return {
+                "cpuUsage": _number(row.get("cpuUsage")),
+                "memoryUsed": _number(row.get("physFootprint")),
+            }
+    return None
+
+
+async def monitor_performance(udid: str, interval_ms: int, metrics: set[str], executable: str) -> None:
+    """Keep one DVT session alive and emit one normalized NDJSON sample per interval."""
+    remote_device = None
+    try:
+        remote_device = await get_tunneld_device_by_udid(udid)
+    except Exception:
+        pass
+    dvt_lockdown = None
+    provider = remote_device
+    if provider is None:
+        dvt_lockdown = await create_using_usbmux(serial=udid)
+        provider = dvt_lockdown
+
+    battery_lockdown = None
+    latest_graphics: dict[str, Any] = {}
+    latest_thermal: dict[str, Any] = {}
+    latest_system: dict[str, Any] = {}
+    latest_processes: list[dict[str, Any]] = []
+    seen_cpu_usage = False
+
+    async def graphics_loop(dvt: DvtProvider) -> None:
+        while True:
+            try:
+                async with Graphics(dvt) as graphics:
+                    async for payload in graphics:
+                        if not isinstance(payload, dict):
+                            continue
+                        if "CoreAnimationFramesPerSecond" in payload:
+                            latest_graphics.clear()
+                            latest_graphics.update({
+                                "fps": _number(payload.get("CoreAnimationFramesPerSecond")),
+                                "gpuUsage": _number(payload.get("Device Utilization %")),
+                            })
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                latest_graphics.clear()
+                latest_graphics["_error"] = str(error)
+                await asyncio.sleep(2)
+
+    async def thermal_loop() -> None:
+        nonlocal battery_lockdown
+        while True:
+            try:
+                battery_lockdown = await create_using_usbmux(serial=udid)
+                async with DiagnosticsService(lockdown=battery_lockdown) as diagnostics:
+                    battery = await diagnostics.get_battery()
+                    if isinstance(battery, dict):
+                        latest_thermal.clear()
+                        latest_thermal.update(json_value(battery))
+                await battery_lockdown.close()
+                battery_lockdown = None
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                latest_thermal.clear()
+                latest_thermal["_error"] = str(error)
+                if battery_lockdown is not None:
+                    await battery_lockdown.close()
+                    battery_lockdown = None
+            await asyncio.sleep(10)
+
+    async def sysmon_loop(sysmon: Sysmontap) -> None:
+        nonlocal latest_processes, seen_cpu_usage
+        async for row in sysmon:
+            if not isinstance(row, dict):
+                continue
+            if "System" in row:
+                try:
+                    latest_system.update(dataclasses.asdict(sysmon.system_attributes_cls(*row["System"])))
+                except Exception:
+                    pass
+            if "Processes" in row:
+                rows = []
+                for process_info in row["Processes"].values():
+                    try:
+                        rows.append(dataclasses.asdict(sysmon.process_attributes_cls(*process_info)))
+                    except Exception:
+                        continue
+                latest_processes = rows
+            if "SystemCPUUsage" not in row:
+                continue
+            if not seen_cpu_usage:
+                seen_cpu_usage = True
+                continue
+            latest_system.update(row["SystemCPUUsage"])
+            latest_system["CPUCount"] = row.get("CPUCount")
+            latest_system["EnabledCPUs"] = row.get("EnabledCPUs")
+            output = {"timestamp": int(datetime.now().timestamp() * 1000)}
+            if "cpu" in metrics or "memory" in metrics:
+                output["system"] = _normalize_system(latest_system)
+            if "graphics" in metrics:
+                output["graphics"] = dict(latest_graphics)
+            if "thermal" in metrics:
+                output["thermal"] = dict(latest_thermal)
+            if "app" in metrics:
+                output["app"] = _find_process(latest_processes, executable)
+            print(json.dumps(json_value(output), separators=(",", ":")), flush=True)
+
+    try:
+        async with DvtProvider(provider) as dvt:
+            sysmon = await Sysmontap.create(dvt, interval=interval_ms)
+            async with sysmon:
+                tasks = [asyncio.create_task(sysmon_loop(sysmon))]
+                if "graphics" in metrics:
+                    tasks.append(asyncio.create_task(graphics_loop(dvt)))
+                if "thermal" in metrics:
+                    tasks.append(asyncio.create_task(thermal_loop()))
+                try:
+                    await asyncio.gather(*tasks)
+                finally:
+                    for task in tasks:
+                        task.cancel()
+                    await asyncio.gather(*tasks, return_exceptions=True)
+    finally:
+        if battery_lockdown is not None:
+            await battery_lockdown.close()
+        if dvt_lockdown is not None:
+            await dvt_lockdown.close()
 
 
 async def get_domain(lockdown, domain: str | None = None) -> dict[str, Any]:
@@ -182,6 +355,10 @@ async def crash_read(udid: str, remote_path: str, max_bytes: int) -> dict[str, A
 
 
 async def run(args: argparse.Namespace) -> Any:
+    if args.mode == "monitor":
+        metrics = {item for item in args.metrics.split(",") if item}
+        await monitor_performance(args.udid, args.interval_ms, metrics, args.app_executable)
+        return None
     if args.mode == "graphics":
         return await graphics_sample(args.udid, args.timeout)
     if args.mode == "device-info":
@@ -195,17 +372,22 @@ async def run(args: argparse.Namespace) -> Any:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("mode", nargs="?", default="graphics", choices=("graphics", "device-info", "crash-list", "crash-read"))
+    parser.add_argument("mode", nargs="?", default="graphics", choices=("monitor", "graphics", "device-info", "crash-list", "crash-read"))
     parser.add_argument("--udid", required=True)
     parser.add_argument("--timeout", type=float, default=10.0)
+    parser.add_argument("--interval-ms", type=int, default=2000)
+    parser.add_argument("--metrics", default="cpu,memory,thermal,graphics")
+    parser.add_argument("--app-executable", default="")
     parser.add_argument("--remote-path", default="")
     parser.add_argument("--max-bytes", type=int, default=2 * 1024 * 1024)
     args = parser.parse_args()
     try:
-        print(json.dumps(asyncio.run(run(args)), separators=(",", ":")), flush=True)
+        result = asyncio.run(run(args))
+        if args.mode != "monitor":
+            print(json.dumps(result, separators=(",", ":")), flush=True)
         return 0
     except Exception as error:
-        print(f"iOS helper failed: {error}", file=sys.stderr, flush=True)
+        print(f"iOS helper failed: {type(error).__name__}: {error!r}", file=sys.stderr, flush=True)
         return 1
 
 

@@ -698,11 +698,13 @@ class AppPackageService {
     return value;
   }
 
-  async selectPackage() {
+  async selectPackage({ platform = '' } = {}) {
+    const iosOnly = platform === 'ios';
+    const androidOnly = platform === 'android';
     const result = await this.dialog.showOpenDialog(this.getWindow() || undefined, {
-      title: '选择安装包',
+      title: iosOnly ? '选择 iOS IPA' : androidOnly ? '选择 Android APK' : '选择安装包',
       properties: ['openFile'],
-      filters: [
+      filters: iosOnly ? [{ name: 'iOS IPA', extensions: ['ipa'] }] : androidOnly ? [{ name: 'Android APK', extensions: ['apk'] }] : [
         { name: '安装包', extensions: ['apk', 'ipa'] },
         { name: 'Android APK', extensions: ['apk'] },
         { name: 'iOS IPA', extensions: ['ipa'] }

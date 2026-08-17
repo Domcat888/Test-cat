@@ -26,7 +26,6 @@ const { WeakNetworkService } = require('./weak-network-service');
 const { FileCompareService } = require('./file-compare-service');
 const { LogAnalysisService } = require('./log-analysis-service');
 const { AppPackageService } = require('./app-package-service');
-const { AiTestAssistantService } = require('./ai-test-assistant-service');
 
 const isMac = process.platform === 'darwin';
 let mainWindow = null;
@@ -42,7 +41,7 @@ let appPackageWindow = null;
 let mockDataWindow = null;
 let timestampConverterWindow = null;
 let formulaCalculatorWindow = null;
-let aiTestAssistantWindow = null;
+let pixelRulerWindow = null;
 let companionPetWindow = null;
 let recorderWindow = null;
 let recordingBorderWindow = null;
@@ -57,7 +56,6 @@ let weakNetworkService = null;
 let fileCompareService = null;
 let logAnalysisService = null;
 let appPackageService = null;
-let aiTestAssistantService = null;
 let ipcReady = false;
 let quitCleanupStarted = false;
 let quitCleanupFinished = false;
@@ -65,19 +63,29 @@ let captureSettings = null;
 let captureShortcutStatus = { enabled: true, screenshot: null, recorder: null };
 let activeCaptureShortcuts = [];
 let companionPetSettings = null;
-let aiSettings = null;
 let companionPetWalkTimer = null;
 let companionPetAnimationTimer = null;
 let companionPetDragState = null;
 const companionPetReminderTimers = new Map();
 const selectionWindows = new Map();
+const pixelRulerOverlayWindows = new Map();
 const capturePayloads = new Map();
+let pixelRulerSettings = null;
+let pixelRulerShortcut = '';
 
 const DEFAULT_CAPTURE_SETTINGS = Object.freeze({
   enabled: true,
   screenshotShortcut: 'Alt+Shift+S',
   recorderShortcut: 'Alt+Shift+R',
   screenshotAction: 'toolbar'
+});
+
+const DEFAULT_PIXEL_RULER_SETTINGS = Object.freeze({
+  shortcut: '',
+  showRulers: true,
+  showMagnifier: true,
+  showGuides: true,
+  overlayOpacity: 45
 });
 
 const DEFAULT_COMPANION_PET_SETTINGS = Object.freeze({
@@ -89,16 +97,6 @@ const DEFAULT_COMPANION_PET_SETTINGS = Object.freeze({
   waterReminderMinutes: 30,
   standReminderEnabled: true,
   standReminderMinutes: 45
-});
-
-const DEFAULT_AI_SETTINGS = Object.freeze({
-  enabled: true,
-  baseUrl: '',
-  model: '',
-  apiKey: '',
-  temperature: 0.2,
-  testCasePrompt: '',
-  locked: false
 });
 
 const COMPANION_PETS = Object.freeze({
@@ -488,64 +486,18 @@ function captureSettingsPath() {
   return path.join(app.getPath('userData'), 'capture-settings.json');
 }
 
-function companionPetSettingsPath() {
-  return path.join(app.getPath('userData'), 'companion-pet-settings.json');
+function pixelRulerSettingsPath() {
+  return path.join(app.getPath('userData'), 'pixel-ruler-settings.json');
 }
 
-function aiSettingsPath() {
-  return path.join(app.getPath('userData'), 'ai-settings.json');
+function companionPetSettingsPath() {
+  return path.join(app.getPath('userData'), 'companion-pet-settings.json');
 }
 
 function clampNumber(value, fallback, min, max) {
   const number = Number(value);
   if (!Number.isFinite(number)) return fallback;
   return Math.min(max, Math.max(min, Math.round(number)));
-}
-
-function clampFloat(value, fallback, min, max) {
-  const number = Number(value);
-  if (!Number.isFinite(number)) return fallback;
-  return Math.min(max, Math.max(min, number));
-}
-
-function normalizeAiSettings(value = {}) {
-  return {
-    enabled: value.enabled !== false,
-    baseUrl: String(value.baseUrl || '').trim().replace(/\/+$/, ''),
-    model: String(value.model || '').trim(),
-    apiKey: String(value.apiKey || '').trim(),
-    temperature: clampFloat(value.temperature, DEFAULT_AI_SETTINGS.temperature, 0, 2),
-    testCasePrompt: String(value.testCasePrompt || ''),
-    locked: value.locked === true
-  };
-}
-
-function loadAiSettings() {
-  try {
-    const parsed = JSON.parse(fs.readFileSync(aiSettingsPath(), 'utf8'));
-    return normalizeAiSettings({ ...DEFAULT_AI_SETTINGS, ...parsed });
-  } catch {
-    return { ...DEFAULT_AI_SETTINGS };
-  }
-}
-
-async function saveAiSettingsToDisk() {
-  await fsp.mkdir(path.dirname(aiSettingsPath()), { recursive: true });
-  await fsp.writeFile(aiSettingsPath(), JSON.stringify(aiSettings, null, 2));
-}
-
-function aiSettingsSnapshot() {
-  const settings = normalizeAiSettings(aiSettings || DEFAULT_AI_SETTINGS);
-  return {
-    settings,
-    ready: Boolean(settings.enabled && settings.baseUrl && settings.model && settings.apiKey),
-    missing: [
-      settings.enabled ? '' : 'AI 功能已关闭',
-      settings.baseUrl ? '' : 'Base URL',
-      settings.model ? '' : 'Model',
-      settings.apiKey ? '' : 'API Key'
-    ].filter(Boolean)
-  };
 }
 
 function pickCompanionPetText(lines, fallback = '') {
@@ -643,6 +595,55 @@ function normalizeCaptureSettings(value = {}) {
     recorderShortcut: normalizeAccelerator(value.recorderShortcut, DEFAULT_CAPTURE_SETTINGS.recorderShortcut),
     screenshotAction: action
   };
+}
+
+function normalizePixelRulerSettings(value = {}) {
+  const shortcut = String(value.shortcut || '').trim();
+  return {
+    shortcut: shortcut ? normalizeAccelerator(shortcut, '') : '',
+    showRulers: value.showRulers !== false,
+    showMagnifier: value.showMagnifier !== false,
+    showGuides: value.showGuides !== false,
+    overlayOpacity: clampNumber(value.overlayOpacity, DEFAULT_PIXEL_RULER_SETTINGS.overlayOpacity, 0, 100)
+  };
+}
+
+function loadPixelRulerSettings() {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(pixelRulerSettingsPath(), 'utf8'));
+    return normalizePixelRulerSettings({ ...DEFAULT_PIXEL_RULER_SETTINGS, ...parsed });
+  } catch {
+    return { ...DEFAULT_PIXEL_RULER_SETTINGS };
+  }
+}
+
+async function savePixelRulerSettingsToDisk() {
+  await fsp.mkdir(path.dirname(pixelRulerSettingsPath()), { recursive: true });
+  await fsp.writeFile(pixelRulerSettingsPath(), JSON.stringify(pixelRulerSettings, null, 2));
+}
+
+function unregisterPixelRulerShortcut() {
+  if (!pixelRulerShortcut) return;
+  try { globalShortcut.unregister(pixelRulerShortcut); } catch {}
+  pixelRulerShortcut = '';
+}
+
+function registerPixelRulerShortcut() {
+  unregisterPixelRulerShortcut();
+  const shortcut = pixelRulerSettings?.shortcut || '';
+  if (!shortcut) return { registered: false, shortcut: '', message: '未设置快捷键，可使用开始按钮' };
+  try {
+    const registered = globalShortcut.register(shortcut, () => {
+      createPixelRulerSession({}).catch((error) => {
+        if (pixelRulerWindow && !pixelRulerWindow.isDestroyed()) pixelRulerWindow.webContents.send('pixel-ruler:notice', error.message || '屏幕测量启动失败');
+      });
+    });
+    if (!registered) return { registered: false, shortcut, message: '快捷键已被系统或其他软件占用' };
+    pixelRulerShortcut = shortcut;
+    return { registered: true, shortcut, message: '快捷键已启用' };
+  } catch (error) {
+    return { registered: false, shortcut, message: error.message || '快捷键注册失败' };
+  }
 }
 
 function loadCaptureSettings() {
@@ -762,6 +763,19 @@ function closeSelectionWindows() {
     if (window && !window.isDestroyed()) window.close();
   }
   selectionWindows.clear();
+}
+
+function closePixelRulerOverlays({ restoreControl = true } = {}) {
+  const windows = [...pixelRulerOverlayWindows.values()];
+  pixelRulerOverlayWindows.clear();
+  for (const window of windows) {
+    if (window && !window.isDestroyed()) window.close();
+  }
+  if (restoreControl && pixelRulerWindow && !pixelRulerWindow.isDestroyed()) {
+    pixelRulerWindow.show();
+    pixelRulerWindow.focus();
+    pixelRulerWindow.webContents.send('pixel-ruler:notice', '测量已结束，可以继续开始新的检测。');
+  }
 }
 
 function closeRecordingBorderWindow() {
@@ -1091,6 +1105,100 @@ function matchDisplaySource(display, sources, index, displayCount) {
   if (exact) return exact;
   if (sources.length === displayCount) return sources[index] || sources[0];
   return sources[0];
+}
+
+async function createPixelRulerSession(options = {}) {
+  closePixelRulerOverlays({ restoreControl: false });
+  if (pixelRulerWindow && !pixelRulerWindow.isDestroyed()) pixelRulerWindow.hide();
+  await new Promise((resolve) => setTimeout(resolve, 180));
+
+  const displays = screen.getAllDisplays();
+  const screenPermissionHint = isMac
+    ? '请到“系统设置 → 隐私与安全性 → 屏幕与系统音频录制”中允许 Test cat，然后完全退出并重新打开软件。'
+    : '请确认系统允许 Test cat 读取屏幕画面后重试。';
+  const maxWidth = Math.max(...displays.map((display) => Math.round(display.bounds.width * display.scaleFactor)), 1280);
+  const maxHeight = Math.max(...displays.map((display) => Math.round(display.bounds.height * display.scaleFactor)), 720);
+  let sources = [];
+  try {
+    // Electron/macOS cannot reliably service several concurrent screen-source
+    // requests. Capture every display in one request, just like screenshot mode.
+    sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize: { width: maxWidth, height: maxHeight }
+    });
+  } catch (error) {
+    if (pixelRulerWindow && !pixelRulerWindow.isDestroyed()) pixelRulerWindow.show();
+    throw new Error(`无法读取电脑屏幕。${screenPermissionHint}`);
+  }
+  if (!sources.length) {
+    if (pixelRulerWindow && !pixelRulerWindow.isDestroyed()) pixelRulerWindow.show();
+    throw new Error(`没有获取到屏幕画面。${screenPermissionHint}`);
+  }
+
+  const referenceDataUrl = String(options.referenceDataUrl || '');
+  if (referenceDataUrl && (!referenceDataUrl.startsWith('data:image/') || referenceDataUrl.length > 30_000_000)) {
+    if (pixelRulerWindow && !pixelRulerWindow.isDestroyed()) pixelRulerWindow.show();
+    throw new Error('参考图无效或文件过大，请选择 20MB 以内的图片。');
+  }
+
+  displays.forEach((display, index) => {
+    const source = matchDisplaySource(display, sources, index, displays.length);
+    if (!source?.thumbnail || source.thumbnail.isEmpty()) return;
+    const payloadId = storeCapturePayload({
+      type: 'pixel-ruler',
+      imageDataUrl: source.thumbnail.toDataURL(),
+      referenceDataUrl,
+      referenceName: String(options.referenceName || ''),
+      settings: normalizePixelRulerSettings({ ...pixelRulerSettings, ...(options.settings || {}) }),
+      displayId: display.id,
+      displayName: source.name || `显示器 ${index + 1}`,
+      bounds: display.bounds,
+      scaleFactor: display.scaleFactor,
+      screenPixelSize: source.thumbnail.getSize()
+    });
+    const bounds = display.bounds;
+    const window = new BrowserWindow({
+      x: Math.round(bounds.x),
+      y: Math.round(bounds.y),
+      width: Math.round(bounds.width),
+      height: Math.round(bounds.height),
+      frame: false,
+      resizable: false,
+      movable: false,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      transparent: false,
+      hasShadow: false,
+      skipTaskbar: true,
+      alwaysOnTop: true,
+      show: false,
+      title: '屏幕像素尺 - Test cat',
+      backgroundColor: '#0b1018',
+      webPreferences: {
+        preload: path.join(__dirname, 'preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true
+      }
+    });
+    pixelRulerOverlayWindows.set(payloadId, window);
+    window.setAlwaysOnTop(true, isMac ? 'screen-saver' : 'pop-up-menu');
+    window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    window.loadFile(path.join(__dirname, 'renderer/pixel-ruler-overlay.html'), { query: { id: payloadId } });
+    window.once('ready-to-show', () => {
+      window.show();
+      window.focus();
+    });
+    configureWindow(window);
+    window.on('closed', () => pixelRulerOverlayWindows.delete(payloadId));
+  });
+
+  if (!pixelRulerOverlayWindows.size) {
+    if (pixelRulerWindow && !pixelRulerWindow.isDestroyed()) pixelRulerWindow.show();
+    throw new Error(`屏幕画面为空。${screenPermissionHint}`);
+  }
+  return { displays: pixelRulerOverlayWindows.size };
 }
 
 async function createCaptureSelection(mode = 'screenshot') {
@@ -1514,6 +1622,7 @@ function setupIpc() {
   ipcMain.handle('ios-mirror:list-devices', () => iosMirrorService.listDevices());
   ipcMain.handle('ios-mirror:start', (_event, configuration) => iosMirrorService.start(configuration || {}));
   ipcMain.handle('ios-mirror:stop', () => iosMirrorService.stop());
+  ipcMain.handle('ios-mirror:capture', () => iosMirrorService.captureFrame());
   ipcMain.handle('ios-mirror:set-always-on-top', (event, enabled) => {
     const senderWindow = BrowserWindow.fromWebContents(event.sender);
     if (!iosMirrorWindow || senderWindow !== iosMirrorWindow) return false;
@@ -1523,6 +1632,44 @@ function setupIpc() {
   ipcMain.handle('calculator:open-window', () => {
     createCalculatorWindow();
     return true;
+  });
+  ipcMain.handle('pixel-ruler:open-window', () => {
+    createPixelRulerWindow();
+    return true;
+  });
+  ipcMain.handle('pixel-ruler:get-settings', () => ({
+    settings: pixelRulerSettings || { ...DEFAULT_PIXEL_RULER_SETTINGS },
+    shortcutStatus: {
+      registered: Boolean(pixelRulerShortcut),
+      shortcut: pixelRulerShortcut,
+      message: pixelRulerShortcut ? '快捷键已启用' : '未设置快捷键，可使用开始按钮'
+    }
+  }));
+  ipcMain.handle('pixel-ruler:save-settings', async (_event, settings = {}) => {
+    pixelRulerSettings = normalizePixelRulerSettings({ ...pixelRulerSettings, ...settings });
+    await savePixelRulerSettingsToDisk();
+    return { settings: pixelRulerSettings, shortcutStatus: registerPixelRulerShortcut() };
+  });
+  ipcMain.handle('pixel-ruler:start', (_event, options = {}) => createPixelRulerSession(options));
+  ipcMain.handle('pixel-ruler:stop', () => {
+    closePixelRulerOverlays({ restoreControl: true });
+    return true;
+  });
+  ipcMain.handle('pixel-ruler:get-payload', (_event, id) => {
+    const payload = capturePayloads.get(String(id || ''));
+    if (!payload || payload.type !== 'pixel-ruler') throw new Error('屏幕测量数据已失效，请重新开始。');
+    return payload;
+  });
+  ipcMain.handle('pixel-ruler:copy-text', (_event, value) => {
+    clipboard.writeText(String(value || '').slice(0, 200_000));
+    return true;
+  });
+  ipcMain.handle('pixel-ruler:copy-image', (_event, dataUrl) => {
+    clipboard.writeImage(imageFromDataUrl(dataUrl));
+    return true;
+  });
+  ipcMain.handle('pixel-ruler:save-image', (event, dataUrl) => {
+    return saveImageDataUrl(dataUrl, BrowserWindow.fromWebContents(event.sender) || pixelRulerWindow || mainWindow);
   });
   ipcMain.handle('performance-monitor:open-window', () => {
     createPerformanceMonitorWindow();
@@ -1627,11 +1774,11 @@ function setupIpc() {
     clipboard.writeText(String(value || '').slice(0, 2_000_000));
     return true;
   });
-  ipcMain.handle('app-package:open-window', () => {
-    createAppPackageWindow();
+  ipcMain.handle('app-package:open-window', (_event, payload) => {
+    createAppPackageWindow(payload || {});
     return true;
   });
-  ipcMain.handle('app-package:select-package', () => appPackageService.selectPackage());
+  ipcMain.handle('app-package:select-package', (_event, payload) => appPackageService.selectPackage(payload || {}));
   ipcMain.handle('app-package:inspect-package', (_event, filePath) => appPackageService.inspectPackage(filePath));
   ipcMain.handle('app-package:list-devices', (_event, payload) => appPackageService.listDevices(payload || {}));
   ipcMain.handle('app-package:list-installed', (_event, payload) => appPackageService.listInstalledPackages(payload || {}));
@@ -1660,30 +1807,6 @@ function setupIpc() {
   });
   ipcMain.handle('formula-calculator:copy-text', (_event, value) => {
     clipboard.writeText(String(value || '').slice(0, 200_000));
-    return true;
-  });
-  ipcMain.handle('ai-test-assistant:open-window', () => {
-    createAiTestAssistantWindow();
-    return true;
-  });
-  ipcMain.handle('ai-test-assistant:get-settings', () => aiSettingsSnapshot());
-  ipcMain.handle('ai-test-assistant:save-settings', async (_event, settings = {}) => {
-    const current = normalizeAiSettings(aiSettings || DEFAULT_AI_SETTINGS);
-    if (current.locked && settings.locked !== false) return aiSettingsSnapshot();
-    if (current.locked && settings.locked === false) aiSettings = normalizeAiSettings({ ...current, locked: false });
-    else aiSettings = normalizeAiSettings({ ...current, ...settings });
-    await saveAiSettingsToDisk();
-    return aiSettingsSnapshot();
-  });
-  ipcMain.handle('ai-test-assistant:test-connection', () => aiTestAssistantService.testConnection());
-  ipcMain.handle('ai-test-assistant:select-requirement-file', () => aiTestAssistantService.selectRequirementFile());
-  ipcMain.handle('ai-test-assistant:extract-requirement-file', (_event, filePath) => aiTestAssistantService.extractRequirementFile(filePath));
-  ipcMain.handle('ai-test-assistant:run-task', (_event, payload = {}) => aiTestAssistantService.runTask(payload));
-  ipcMain.handle('ai-test-assistant:generate-test-cases', (_event, payload = {}) => aiTestAssistantService.generateTestCases(payload));
-  ipcMain.handle('ai-test-assistant:export-excel', (_event, payload = {}) => aiTestAssistantService.exportExcel(payload));
-  ipcMain.handle('ai-test-assistant:export-xmind', (_event, payload = {}) => aiTestAssistantService.exportXmind(payload));
-  ipcMain.handle('ai-test-assistant:copy-text', (_event, value) => {
-    clipboard.writeText(String(value || '').slice(0, 2_000_000));
     return true;
   });
   ipcMain.handle('formula-calculator:export-data', async (event, payload = {}) => {
@@ -1987,7 +2110,7 @@ function createIosMirrorWindow() {
     minHeight: 600,
     show: false,
     title: 'iOS 投屏 - Test cat',
-    icon: path.join(__dirname, '../assets/modules/ios-mirror.png'),
+    icon: path.join(__dirname, '../assets/modules/mobile-mirror.png'),
     titleBarStyle: isMac ? 'hiddenInset' : 'default',
     backgroundColor: '#f4f6f8',
     webPreferences: {
@@ -2047,6 +2170,46 @@ function createCalculatorWindow() {
     if (calculatorWindow === window) calculatorWindow = null;
   });
 
+  return window;
+}
+
+function createPixelRulerWindow() {
+  if (pixelRulerWindow && !pixelRulerWindow.isDestroyed()) {
+    if (pixelRulerWindow.isMinimized()) pixelRulerWindow.restore();
+    pixelRulerWindow.show();
+    pixelRulerWindow.focus();
+    return pixelRulerWindow;
+  }
+
+  const window = new BrowserWindow({
+    width: 940,
+    height: 700,
+    minWidth: 820,
+    minHeight: 620,
+    show: false,
+    title: '屏幕像素尺 - Test cat',
+    icon: path.join(__dirname, '../assets/modules/pixel-ruler.png'),
+    titleBarStyle: isMac ? 'hiddenInset' : 'default',
+    backgroundColor: '#0f151e',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true
+    }
+  });
+
+  pixelRulerWindow = window;
+  window.loadFile(path.join(__dirname, 'renderer/pixel-ruler.html'));
+  window.once('ready-to-show', () => {
+    window.show();
+    if (process.argv.includes('--devtools')) window.webContents.openDevTools({ mode: 'detach' });
+  });
+  configureWindow(window);
+  window.on('closed', () => {
+    if (pixelRulerWindow === window) pixelRulerWindow = null;
+    closePixelRulerOverlays({ restoreControl: false });
+  });
   return window;
 }
 
@@ -2249,11 +2412,13 @@ function createLogAnalysisWindow() {
   return window;
 }
 
-function createAppPackageWindow() {
+function createAppPackageWindow({ platform = '' } = {}) {
+  const initialPlatform = platform === 'ios' ? 'ios' : 'android';
   if (appPackageWindow && !appPackageWindow.isDestroyed()) {
     if (appPackageWindow.isMinimized()) appPackageWindow.restore();
     appPackageWindow.show();
     appPackageWindow.focus();
+    appPackageWindow.webContents.send('app-package:set-platform', initialPlatform || 'auto');
     return appPackageWindow;
   }
 
@@ -2263,7 +2428,7 @@ function createAppPackageWindow() {
     minWidth: 960,
     minHeight: 660,
     show: false,
-    title: '安装包管理 - Test cat',
+    title: initialPlatform === 'ios' ? 'IPA 管理 - Test cat' : 'APK 管理 - Test cat',
     icon: path.join(__dirname, '../assets/modules/app-package.png'),
     titleBarStyle: isMac ? 'hiddenInset' : 'default',
     backgroundColor: '#0f151e',
@@ -2276,7 +2441,7 @@ function createAppPackageWindow() {
   });
 
   appPackageWindow = window;
-  window.loadFile(path.join(__dirname, 'renderer/app-package.html'));
+  window.loadFile(path.join(__dirname, 'renderer/app-package.html'), { query: { platform: initialPlatform } });
   window.once('ready-to-show', () => {
     window.show();
     if (process.argv.includes('--devtools')) window.webContents.openDevTools({ mode: 'detach' });
@@ -2405,51 +2570,12 @@ function createFormulaCalculatorWindow() {
   return window;
 }
 
-function createAiTestAssistantWindow() {
-  if (aiTestAssistantWindow && !aiTestAssistantWindow.isDestroyed()) {
-    if (aiTestAssistantWindow.isMinimized()) aiTestAssistantWindow.restore();
-    aiTestAssistantWindow.show();
-    aiTestAssistantWindow.focus();
-    return aiTestAssistantWindow;
-  }
-
-  const window = new BrowserWindow({
-    width: 1280,
-    height: 840,
-    minWidth: 980,
-    minHeight: 680,
-    show: false,
-    title: 'AI 测试助手 - Test cat',
-    icon: path.join(__dirname, '../assets/modules/ai-test-assistant.png'),
-    titleBarStyle: isMac ? 'hiddenInset' : 'default',
-    backgroundColor: '#0f151e',
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true
-    }
-  });
-
-  aiTestAssistantWindow = window;
-  window.loadFile(path.join(__dirname, 'renderer/ai-test-assistant.html'));
-  window.once('ready-to-show', () => {
-    window.show();
-    if (process.argv.includes('--devtools')) window.webContents.openDevTools({ mode: 'detach' });
-  });
-  configureWindow(window);
-  window.on('closed', () => {
-    if (aiTestAssistantWindow === window) aiTestAssistantWindow = null;
-  });
-  return window;
-}
-
 app.whenReady().then(() => {
   app.setName('Test cat');
   createApplicationMenu();
   captureSettings = loadCaptureSettings();
+  pixelRulerSettings = loadPixelRulerSettings();
   companionPetSettings = loadCompanionPetSettings();
-  aiSettings = loadAiSettings();
   const androidRuntimeRoots = [
     path.join(process.resourcesPath, 'platform-tools'),
     path.join(app.getAppPath(), 'resources', 'platform-tools')
@@ -2471,10 +2597,12 @@ app.whenReady().then(() => {
   iosMirrorService = new IosMirrorService({
     runtimeRoots: iosRuntimeRoots,
     packaged: app.isPackaged,
-    ensureTunnel: async () => {
-      if (!iosPerformanceService) throw new Error('iOS 性能桥接尚未初始化。');
+    ensureTunnel: async (serial) => {
+      if (!iosPerformanceService) throw new Error('iOS 系统桥接尚未初始化。');
       await iosPerformanceService.startTunnel();
-      if (!await iosPerformanceService.waitForTunnel(15000)) throw new Error('iOS 性能桥接未就绪。');
+      if (!await iosPerformanceService.waitForTunnelDevice(serial, 45000)) {
+        throw new Error('iPhone 尚未完成系统桥接，请保持手机解锁并在手机上确认配对后重试。');
+      }
     },
     onFrame: (frame) => {
       if (iosMirrorWindow && !iosMirrorWindow.isDestroyed()) iosMirrorWindow.webContents.send('ios-mirror:frame', frame);
@@ -2542,13 +2670,9 @@ app.whenReady().then(() => {
     packaged: app.isPackaged,
     getWindow: () => appPackageWindow && !appPackageWindow.isDestroyed() ? appPackageWindow : mainWindow
   });
-  aiTestAssistantService = new AiTestAssistantService({
-    dialog,
-    getWindow: () => aiTestAssistantWindow && !aiTestAssistantWindow.isDestroyed() ? aiTestAssistantWindow : mainWindow,
-    getSettings: () => aiSettings || DEFAULT_AI_SETTINGS
-  });
   setupIpc();
   registerCaptureShortcuts();
+  registerPixelRulerShortcut();
   createWindow();
   applyCompanionPetSettings();
 
@@ -2563,6 +2687,7 @@ app.on('window-all-closed', () => {
 
 app.on('will-quit', () => {
   unregisterCaptureShortcuts();
+  unregisterPixelRulerShortcut();
 });
 
 app.on('before-quit', (event) => {

@@ -19,6 +19,7 @@
     "dev": "npm run prepare:runtimes && npm run build:renderer && electron . --devtools",
     "test": "node --test test",
     "verify:scrcpy": "node scripts/verify-scrcpy.mjs",
+    "verify:platforms": "node scripts/verify-cross-platform.mjs",
     "pack": "npm run prepare:runtimes && npm run build:renderer && electron-builder --dir",
     "prepare:mac-universal-runtimes": "npm run prepare:android-runtime -- --platform=darwin --arch=arm64 && npm run prepare:android-runtime -- --platform=darwin --arch=x64 && npm run prepare:ios-runtime -- --platform=darwin --arch=arm64 && npm run prepare:ios-runtime -- --platform=darwin --arch=x64",
     "build:mac": "npm run prepare:mac-universal-runtimes && npm run build:renderer && electron-builder --mac --universal",
@@ -48,7 +49,10 @@
       "package.json"
     ],
     "asarUnpack": [
-      "src/ios-performance-helper.py"
+      "src/ios-performance-helper.py",
+      "src/ios-mirror-helper.py",
+      "src/ios-valeria-helper.py",
+      "resources/ios-valeria/**/*"
     ],
     "extraResources": [
       {
@@ -83,6 +87,10 @@
     "mac": {
       "icon": "assets/icons/test-cat.icns",
       "category": "public.app-category.developer-tools",
+      "extendInfo": {
+        "NSScreenCaptureUsageDescription": "Test cat 需要读取屏幕画面，用于截图、区域录屏和测试取证。",
+        "NSMicrophoneUsageDescription": "Test cat 仅在录屏时按你的选择采集麦克风声音。"
+      },
       "x64ArchFiles": "Contents/Resources/{ios-performance-runtime,platform-tools}/**/{*,.*/**}",
       "target": [
         "dmg",

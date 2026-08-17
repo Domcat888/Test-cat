@@ -2,6 +2,8 @@ const api = window.testCat?.iosPerformance;
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const MAX_RAW_SAMPLES = 86400;
+const MAX_LIVE_CHART_SAMPLES = 3600;
+let dashboardRenderPending = false;
 
 document.body.dataset.platform = window.testCat?.platform || 'browser';
 
@@ -248,7 +250,10 @@ function reportProgressPoints(report, key) {
 
 function drawLiveChart(canvas, key) {
   const detail = series[key];
-  drawDatasets(canvas, [{ color: detail.color, points: reportPoints({ samples: state.samples }, key) }], detail.unit);
+  const visibleSamples = state.samples.length > MAX_LIVE_CHART_SAMPLES
+    ? state.samples.slice(-MAX_LIVE_CHART_SAMPLES)
+    : state.samples;
+  drawDatasets(canvas, [{ color: detail.color, points: reportPoints({ samples: visibleSamples }, key) }], detail.unit);
 }
 
 function updateDashboard() {
@@ -260,7 +265,18 @@ function updateDashboard() {
   elements.duration.textContent = `${hours ? `${String(hours).padStart(2, '0')}:` : ''}${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
   elements.sampleCount.textContent = `${state.samples.length} 个原始采样点`;
   for (const key of Object.keys(series)) renderKpi(key, last[key], last.quality?.[key]);
-  for (const canvas of $$('canvas[data-series]')) drawLiveChart(canvas, canvas.dataset.series);
+  for (const canvas of $$('canvas[data-series]')) {
+    if (canvas.offsetParent !== null) drawLiveChart(canvas, canvas.dataset.series);
+  }
+}
+
+function scheduleDashboardUpdate() {
+  if (dashboardRenderPending) return;
+  dashboardRenderPending = true;
+  requestAnimationFrame(() => {
+    dashboardRenderPending = false;
+    updateDashboard();
+  });
 }
 
 function reportPayload() {
@@ -575,7 +591,7 @@ $('#ios-performance-toggle-all').addEventListener('click', () => {
 api?.onSample((sample) => {
   state.samples.push(sample);
   if (state.samples.length > MAX_RAW_SAMPLES) state.samples.shift();
-  updateDashboard();
+  scheduleDashboardUpdate();
 });
 api?.onStatus(setStatus);
 api?.checkEnvironment().then((result) => {

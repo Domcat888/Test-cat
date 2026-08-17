@@ -14,7 +14,10 @@
     "package.json"
   ],
   "asarUnpack": [
-    "src/ios-performance-helper.py"
+    "src/ios-performance-helper.py",
+    "src/ios-mirror-helper.py",
+    "src/ios-valeria-helper.py",
+    "resources/ios-valeria/**/*"
   ],
   "extraResources": [
     {

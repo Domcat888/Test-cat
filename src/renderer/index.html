@@ -142,48 +142,6 @@
               <label class="switch"><input id="theme-switch" type="checkbox" /><span></span></label>
             </div>
           </div>
-          <div class="settings-card ai-settings-card">
-            <div class="settings-card-title">
-              <div><h2>AI 设置</h2><p>默认支持 OpenAI 兼容接口；Key 只保存在本机，用于 AI 测试助手。</p></div>
-              <div class="settings-title-actions">
-                <button class="secondary-button compact-button" id="ai-lock-settings" type="button">锁定配置</button>
-                <span id="ai-settings-status" class="setting-status">正在读取配置…</span>
-              </div>
-            </div>
-            <div class="setting-row">
-              <div><strong>启用 AI 功能</strong><p>关闭后 AI 测试助手不会发起模型请求，但仍可打开窗口查看内容。</p></div>
-              <label class="switch"><input id="ai-enabled" type="checkbox" /><span></span></label>
-            </div>
-            <div class="ai-setting-grid">
-              <label>
-                <span>Base URL</span>
-                <input id="ai-base-url" placeholder="例如：https://api.openai.com/v1" />
-              </label>
-              <label>
-                <span>Model</span>
-                <input id="ai-model" placeholder="例如：gpt-4.1-mini / deepseek-chat" />
-              </label>
-              <label>
-                <span>API Key</span>
-                <input id="ai-api-key" type="password" placeholder="例如：sk-..." autocomplete="off" />
-              </label>
-              <label>
-                <span>Temperature</span>
-                <input id="ai-temperature" type="number" min="0" max="2" step="0.1" placeholder="例如：0.2" />
-              </label>
-            </div>
-            <div class="ai-prompt-field">
-              <div class="ai-prompt-head">
-                <div><strong>测试用例生成提示词</strong><p>点击打开大编辑器，关闭窗口后自动保存到设置。</p></div>
-                <button class="secondary-button" id="ai-open-prompt-editor" type="button">编辑提示词</button>
-              </div>
-              <div class="ai-prompt-summary" id="ai-prompt-summary">还没有配置提示词</div>
-            </div>
-            <div class="capture-actions">
-              <button class="secondary-button" id="ai-save-settings" type="button">保存 AI 设置</button>
-              <button class="primary-button" id="ai-test-connection" type="button">测试连接</button>
-            </div>
-          </div>
           <div class="settings-card companion-settings-card">
             <div class="settings-card-title">
               <div><h2 id="companion-pet-title">陪伴宠物 · 月薪喵</h2><p id="companion-pet-description">从录屏里提取的月薪喵，会在桌面随机移动、跳舞，并提醒你喝水、站起来活动。</p></div>
@@ -313,19 +271,6 @@
           <button type="submit" class="primary-button">保存模块</button>
         </div>
       </form>
-    </div>
-    <div class="modal-backdrop" id="ai-prompt-modal" hidden>
-      <section class="modal ai-prompt-modal">
-        <div class="modal-header">
-          <div><h2>测试用例生成提示词</h2><p>关闭窗口会自动保存，生成测试用例时会读取这里的内容。</p></div>
-          <button type="button" class="close-button" id="ai-close-prompt-editor" aria-label="关闭">×</button>
-        </div>
-        <label>提示词内容<textarea id="ai-prompt-editor" rows="14" placeholder="例如：让 AI 按模块、优先级、前置条件、步骤、预期结果输出 Markdown 表格。"></textarea></label>
-        <div class="modal-actions">
-          <span class="modal-count" id="ai-prompt-count">0 字</span>
-          <button type="button" class="primary-button" id="ai-done-prompt-editor">关闭并保存</button>
-        </div>
-      </section>
     </div>
     <div class="toast" id="toast" role="status"></div>
     <script src="app.js"></script>

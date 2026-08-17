@@ -32,6 +32,23 @@ test('builds cross-platform screenshot commands', () => {
     command: 'tidevice', args: ['-u', 'UDID12345678', 'screenshot', 'C:\\Temp\\frame.png']
   });
   assert.throws(() => __test.buildScreenshotCommand('wda', 'UDID12345678', '/tmp/frame.png'), /不支持/);
+  assert.deepEqual(__test.buildPymobiledeviceScreenshotArgs('UDID12345678', '/tmp/frame.png', 'userspace'), [
+    '-m', 'pymobiledevice3', '--no-color', 'developer', 'dvt', 'screenshot', '--userspace', '--udid', 'UDID12345678', '/tmp/frame.png'
+  ]);
+  assert.deepEqual(__test.buildPymobiledeviceScreenshotArgs('UDID12345678', '/tmp/frame.png', 'tunnel'), [
+    '-m', 'pymobiledevice3', '--no-color', 'developer', 'dvt', 'screenshot', '--tunnel', 'UDID12345678', '/tmp/frame.png'
+  ]);
+  assert.deepEqual(__test.buildPymobiledeviceMounterArgs('UDID12345678', 'tunnel'), [
+    '-m', 'pymobiledevice3', '--no-color', 'mounter', 'auto-mount', '--tunnel', 'UDID12345678'
+  ]);
+  assert.deepEqual(__test.buildPymobiledeviceWebStreamArgs('UDID12345678', 18662), [
+    '-m', 'pymobiledevice3', '--no-color', 'developer', 'core-device', 'display', 'serve-web',
+    '--tunnel', 'UDID12345678', '--bind', '127.0.0.1', '--http-port', '18662', '--no-audio'
+  ]);
+  assert.deepEqual(__test.buildPymobiledeviceMediaSupportArgs('UDID12345678'), [
+    '-m', 'pymobiledevice3', '--no-color', 'developer', 'core-device', 'display',
+    'get-media-support-info', '--tunnel', 'UDID12345678'
+  ]);
 });
 
 test('resolves Windows command candidates including executable paths', () => {
@@ -60,24 +77,56 @@ test('uses the bundled pymobiledevice3 runtime when native screenshot tools are 
   assert.equal((await service.resolveScreenshotTool()).type, 'pymobiledevice3');
 });
 
-test('starts the iOS 17 tunnel before a bundled-runtime mirror session', async () => {
-  let tunnelCalls = 0;
-  const service = new IosMirrorService({
-    ensureTunnel: async () => { tunnelCalls += 1; },
-    onFrame: () => {},
-    onStatus: () => {}
-  });
+test('starts the HEVC web stream for iOS 17 mirror sessions', async () => {
+  const service = new IosMirrorService({ onFrame: () => {}, onStatus: () => {}, platform: 'win32' });
   service.resolveScreenshotTool = async () => ({ type: 'pymobiledevice3', path: '/runtime/python3' });
   service.listDevices = async () => [{ serial: 'UDID3', model: 'QA iPhone 15', iosVersion: '17.1.1', state: 'device', platform: 'ios' }];
   service.scheduleFrame = () => {};
+  service.ensureTunnel = async () => {};
+  service.supportsCoreDeviceStream = async () => true;
+  service.startWebStream = async () => 'http://127.0.0.1:18662/';
   const meta = await service.start({ serial: 'UDID3' });
-  assert.equal(tunnelCalls, 1);
-  assert.equal(service.session.requiresTunnel, true);
+  assert.equal(service.session.usesUserspace, false);
+  assert.equal(service.session.usesTunnel, true);
   assert.equal(meta.model, 'QA iPhone 15');
+  assert.equal(meta.streamMode, 'USB HEVC 实时视频流');
+  assert.equal(meta.streamUrl, 'http://127.0.0.1:18662/');
+  await service.stop(false);
+});
+
+test('uses the persistent DVT stream when the iPhone reports no CoreDevice video features', async () => {
+  const service = new IosMirrorService({ onFrame: () => {}, onStatus: () => {}, platform: 'win32' });
+  service.resolveScreenshotTool = async () => ({ type: 'pymobiledevice3', path: '/runtime/python3' });
+  service.listDevices = async () => [{ serial: 'UDID3', model: 'QA iPhone 14', iosVersion: '17.1.1', state: 'device', platform: 'ios' }];
+  service.ensureTunnel = async () => {};
+  service.supportsCoreDeviceStream = async () => false;
+  service.startDvtStream = async () => {};
+  const meta = await service.start({ serial: 'UDID3' });
+  assert.equal(meta.streamMode, 'USB DVT 持续画面');
+  assert.equal(service.session.streamMode, 'dvt');
+  await service.stop(false);
+});
+
+test('prefers the Valeria H.264 stream on macOS without starting a tunnel', async () => {
+  let tunnelStarts = 0;
+  let valeriaStarts = 0;
+  const service = new IosMirrorService({
+    onFrame: () => {}, onStatus: () => {}, platform: 'darwin',
+    ensureTunnel: async () => { tunnelStarts += 1; }
+  });
+  service.resolveScreenshotTool = async () => ({ type: 'pymobiledevice3', path: '/runtime/python3' });
+  service.listDevices = async () => [{ serial: 'UDID3', model: 'QA iPhone 14', iosVersion: '17.1.1', state: 'device', platform: 'ios' }];
+  service.startValeriaStream = async () => { valeriaStarts += 1; };
+  const meta = await service.start({ serial: 'UDID3' });
+  assert.equal(meta.streamMode, 'USB H.264 实时视频流');
+  assert.equal(service.session.streamMode, 'valeria');
+  assert.equal(valeriaStarts, 1);
+  assert.equal(tunnelStarts, 0);
   await service.stop(false);
 });
 
 test('converts missing screenshot output into an actionable message', () => {
+  assert.equal(__test.isUserspaceUnavailable({ stderr: 'no-root userspace tunnel unavailable: no RemotePairing service' }), true);
   assert.match(__test.classifyScreenshotFailure({ stderr: 'Unable to connect to Tunneld' }).message, /桥接未就绪/);
   assert.match(__test.classifyScreenshotFailure({ stderr: 'Device not found' }).message, /已断开/);
   assert.doesNotMatch(__test.classifyScreenshotFailure({ message: 'ENOENT /tmp/screen.png' }).message, /\/tmp|ENOENT/);
@@ -100,7 +149,7 @@ test('starts a view-only session without WDA settings', async () => {
   const meta = await service.start({ serial: 'UDID12345678', interval: 100 });
   assert.equal(meta.model, 'QA iPhone');
   assert.equal(meta.controlSupported, false);
-  assert.equal(meta.streamMode, 'USB 截图轮询');
+  assert.equal(meta.streamMode, 'USB 截图兼容模式');
   assert.equal(meta.interval, 300);
   assert.equal(typeof service.sendControl, 'undefined');
   assert.equal(statuses.at(-1).phase, 'streaming');

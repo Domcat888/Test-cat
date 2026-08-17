@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>屏幕像素尺</title>
+    <link rel="stylesheet" href="pixel-ruler-overlay.css" />
+  </head>
+  <body>
+    <div id="stage">
+      <img id="screen-image" alt="当前屏幕" draggable="false" />
+      <img id="reference-image" alt="参考图" draggable="false" hidden />
+      <canvas id="measure-canvas"></canvas>
+    </div>
+
+    <div class="toolbar" id="toolbar">
+      <div class="brand"><img src="../../assets/modules/pixel-ruler.png" alt="" /><span><b>屏幕像素尺</b><small id="display-name">正在载入屏幕</small></span></div>
+      <div class="tool-group">
+        <button id="measure-mode" class="active">⌖ 测量</button>
+        <button id="reference-mode" disabled>▣ 调整叠加</button>
+        <button id="blink-button" disabled>◐ 闪烁对比</button>
+      </div>
+      <label class="opacity"><span>透明度</span><input id="opacity-range" type="range" min="0" max="100" value="45" disabled /><b id="opacity-value">45%</b></label>
+      <div class="tool-group compact">
+        <button id="ruler-toggle" class="active" title="屏幕标尺">标尺</button>
+        <button id="guide-toggle" class="active" title="对齐线">对齐</button>
+        <button id="magnifier-toggle" class="active" title="像素放大镜">放大镜</button>
+      </div>
+      <div class="tool-group compact">
+        <button id="clear-button">清空</button>
+        <button id="copy-button">复制结果</button>
+        <button id="copy-image-button">复制标注图</button>
+        <button id="save-button">保存标注图</button>
+        <button id="exit-button" class="danger">退出</button>
+      </div>
+    </div>
+
+    <div class="measure-info" id="measure-info">
+      <div><span>坐标</span><b id="coordinate-value">X=0 · Y=0</b></div>
+      <div><span>尺寸</span><b id="size-value">W=0 · H=0</b></div>
+      <div><span>色值</span><b id="color-value"><i></i>#000000</b></div>
+      <p id="distance-value">拖拽框选一个 UI 元素；再框选第二个元素可测量间距和对齐。</p>
+    </div>
+
+    <div class="magnifier" id="magnifier"><canvas width="132" height="132"></canvas><span id="magnifier-label">0, 0</span></div>
+    <div class="toast" id="toast"></div>
+    <script src="pixel-ruler-overlay.js"></script>
+  </body>
+</html>

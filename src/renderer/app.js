@@ -3,9 +3,9 @@ const THEME_KEY = 'test-cat-theme';
 const TOOL_ORDER_KEY = 'test-cat-tool-order-v1';
 const PLATFORM_FOLDER_KEY = 'test-cat-platform-folders-v1';
 const TODO_KEY = 'test-cat-todos-v1';
-const BUILT_IN_TOOL_IDS = ['mobile-mirror', 'ios-mirror', 'ios-performance', 'calculator', 'performance-monitor', 'weak-network', 'file-compare', 'log-analysis', 'app-package', 'mock-data', 'timestamp-converter', 'formula-calculator', 'ai-test-assistant'];
-const ANDROID_TOOL_IDS = ['mobile-mirror', 'performance-monitor', 'weak-network', 'log-analysis'];
-const IOS_TOOL_IDS = ['ios-mirror', 'ios-performance'];
+const BUILT_IN_TOOL_IDS = ['mobile-mirror', 'ios-mirror', 'ios-performance', 'ios-app-manager', 'calculator', 'performance-monitor', 'weak-network', 'file-compare', 'log-analysis', 'app-package', 'mock-data', 'timestamp-converter', 'formula-calculator', 'pixel-ruler'];
+const ANDROID_TOOL_IDS = ['mobile-mirror', 'performance-monitor', 'weak-network', 'log-analysis', 'app-package'];
+const IOS_TOOL_IDS = ['ios-mirror', 'ios-performance', 'ios-app-manager'];
 const PLATFORM_TOOL_IDS = new Set([...ANDROID_TOOL_IDS, ...IOS_TOOL_IDS]);
 
 const state = {
@@ -226,7 +226,7 @@ function mobileMirrorCard() {
 function iosMirrorCard() {
   return `
     <article class="module-card built-in-module sortable-tool" data-open-ios-mirror data-tool-id="ios-mirror" draggable="true" role="button" tabindex="0">
-      <div class="module-picture"><img src="../../assets/modules/ios-mirror.png" alt="iOS 投屏" /></div>
+      <div class="module-picture"><img src="../../assets/modules/mobile-mirror.png" alt="iOS 投屏" /></div>
       <span class="built-in-badge">内置工具</span>
       <h3>iOS 投屏</h3>
       <p>通过 USB 连接 iPhone，在 Test cat 中跨平台查看实时画面。</p>
@@ -267,6 +267,17 @@ function iosPerformanceCard() {
     </article>`;
 }
 
+function iosAppManagerCard() {
+  return `
+    <article class="module-card built-in-module sortable-tool" data-open-ios-app-manager data-tool-id="ios-app-manager" draggable="true" role="button" tabindex="0">
+      <div class="module-picture"><img src="../../assets/modules/app-package.png" alt="IPA 管理" /></div>
+      <span class="built-in-badge">内置工具</span>
+      <h3>IPA 管理</h3>
+      <p>解析 IPA 信息和文件指纹，连接 iPhone 安装、查看版本与卸载 App。</p>
+      <div class="module-meta"><span class="module-tag">iOS 应用</span></div>
+    </article>`;
+}
+
 function weakNetworkCard() {
   return `
     <article class="module-card built-in-module sortable-tool" data-open-weak-network data-tool-id="weak-network" draggable="true" role="button" tabindex="0">
@@ -303,11 +314,11 @@ function logAnalysisCard() {
 function appPackageCard() {
   return `
     <article class="module-card built-in-module sortable-tool" data-open-app-package data-tool-id="app-package" draggable="true" role="button" tabindex="0">
-      <div class="module-picture"><img src="../../assets/modules/app-package.png" alt="安装包管理" /></div>
+      <div class="module-picture"><img src="../../assets/modules/app-package.png" alt="APK 管理" /></div>
       <span class="built-in-badge">内置工具</span>
-      <h3>安装包管理</h3>
-      <p>解析 APK / IPA 信息，连接 Android 或 iPhone 安装、卸载，并解释常见失败原因。</p>
-      <div class="module-meta"><span class="module-tag">App 测试</span></div>
+      <h3>APK 管理</h3>
+      <p>解析 APK 信息和文件指纹，连接 Android 设备安装、查看版本、清数据与卸载。</p>
+      <div class="module-meta"><span class="module-tag">Android 应用</span></div>
     </article>`;
 }
 
@@ -344,14 +355,14 @@ function formulaCalculatorCard() {
     </article>`;
 }
 
-function aiTestAssistantCard() {
+function pixelRulerCard() {
   return `
-    <article class="module-card built-in-module sortable-tool" data-open-ai-test-assistant data-tool-id="ai-test-assistant" draggable="true" role="button" tabindex="0">
-      <div class="module-picture"><img src="../../assets/modules/ai-test-assistant.png" alt="AI 测试助手" /></div>
-      <span class="built-in-badge">AI 工具箱</span>
-      <h3>AI 测试助手</h3>
-      <p>测试 AI 能力集合箱，先接入需求提取、附加条件和测试用例生成导出。</p>
-      <div class="module-meta"><span class="module-tag">AI 测试</span></div>
+    <article class="module-card built-in-module sortable-tool" data-open-pixel-ruler data-tool-id="pixel-ruler" draggable="true" role="button" tabindex="0">
+      <div class="module-picture"><img src="../../assets/modules/pixel-ruler.png" alt="屏幕像素尺" /></div>
+      <span class="built-in-badge">内置工具</span>
+      <h3>屏幕像素尺</h3>
+      <p>覆盖电脑屏幕测量 UI 坐标、尺寸、间距、对齐和颜色，支持透明参考图。</p>
+      <div class="module-meta"><span class="module-tag">UI 测试</span></div>
     </article>`;
 }
 
@@ -369,6 +380,7 @@ function homeToolCard(id) {
   if (id === 'mobile-mirror') return mobileMirrorCard();
   if (id === 'ios-mirror') return iosMirrorCard();
   if (id === 'ios-performance') return iosPerformanceCard();
+  if (id === 'ios-app-manager') return iosAppManagerCard();
   if (id === 'calculator') return calculatorCard();
   if (id === 'performance-monitor') return performanceMonitorCard();
   if (id === 'weak-network') return weakNetworkCard();
@@ -378,7 +390,7 @@ function homeToolCard(id) {
   if (id === 'mock-data') return mockDataCard();
   if (id === 'timestamp-converter') return timestampConverterCard();
   if (id === 'formula-calculator') return formulaCalculatorCard();
-  if (id === 'ai-test-assistant') return aiTestAssistantCard();
+  if (id === 'pixel-ruler') return pixelRulerCard();
   const module = state.modules.find((item) => item.id === id);
   return module ? moduleCard(module, true) : '';
 }
@@ -415,14 +427,14 @@ function render() {
     platformFolderHtml({
       id: 'android',
       title: 'Android 工具箱',
-      description: '投屏、性能、弱网与日志',
+      description: '投屏、性能、弱网、日志与 APK 管理',
       tools: ANDROID_TOOL_IDS,
       order
     }),
     platformFolderHtml({
       id: 'ios',
       title: 'iOS 工具箱',
-      description: 'iPhone 投屏与性能采集',
+      description: 'iPhone 投屏、性能采集与 IPA 管理',
       tools: IOS_TOOL_IDS,
       order
     })
@@ -607,9 +619,19 @@ function bindCardActions() {
     if (state.dragOccurred) return;
     try {
       if (!window.testCat?.appPackage) throw new Error('请通过本地预览入口运行 Test cat');
-      await window.testCat.appPackage.openWindow();
+      await window.testCat.appPackage.openWindow({ platform: 'android' });
     } catch (error) {
-      toast(error.message || '无法打开安装包管理窗口');
+      toast(error.message || '无法打开 APK 管理窗口');
+    }
+  });
+  const iosAppManager = $('[data-open-ios-app-manager]');
+  iosAppManager?.addEventListener('click', async () => {
+    if (state.dragOccurred) return;
+    try {
+      if (!window.testCat?.appPackage) throw new Error('请通过本地预览入口运行 Test cat');
+      await window.testCat.appPackage.openWindow({ platform: 'ios' });
+    } catch (error) {
+      toast(error.message || '无法打开 IPA 管理窗口');
     }
   });
   const mockData = $('[data-open-mock-data]');
@@ -642,14 +664,14 @@ function bindCardActions() {
       toast(error.message || '无法打开公式运算窗口');
     }
   });
-  const aiTestAssistant = $('[data-open-ai-test-assistant]');
-  aiTestAssistant?.addEventListener('click', async () => {
+  const pixelRuler = $('[data-open-pixel-ruler]');
+  pixelRuler?.addEventListener('click', async () => {
     if (state.dragOccurred) return;
     try {
-      if (!window.testCat?.aiTestAssistant) throw new Error('请通过本地预览入口运行 Test cat');
-      await window.testCat.aiTestAssistant.openWindow();
+      if (!window.testCat?.pixelRuler) throw new Error('请通过本地预览入口运行 Test cat');
+      await window.testCat.pixelRuler.openWindow();
     } catch (error) {
-      toast(error.message || '无法打开 AI 测试助手窗口');
+      toast(error.message || '无法打开屏幕像素尺窗口');
     }
   });
   $$('.module-card[role="button"]').forEach((card) => card.addEventListener('keydown', (event) => {
@@ -907,187 +929,6 @@ async function saveCaptureSettings(showToast = true) {
   }
 }
 
-function renderAiSettings(snapshot) {
-  const settings = snapshot?.settings;
-  if (!settings) return;
-  $('#ai-enabled').checked = settings.enabled !== false;
-  $('#ai-base-url').value = settings.baseUrl || '';
-  $('#ai-model').value = settings.model || '';
-  $('#ai-api-key').value = settings.apiKey || '';
-  $('#ai-temperature').value = settings.temperature ?? 0.2;
-  renderAiPromptSummary(settings.testCasePrompt || '');
-  applyAiEnabledState(settings.enabled !== false, settings.locked === true);
-  renderAiStatus(snapshot);
-}
-
-function renderAiPromptSummary(prompt = '') {
-  const node = $('#ai-prompt-summary');
-  if (!node) return;
-  node.dataset.prompt = prompt;
-  const value = String(prompt || '').trim();
-  if (!value) {
-    node.textContent = '还没有配置提示词';
-    return;
-  }
-  node.textContent = value.length > 180 ? `${value.slice(0, 180)}\n……共 ${value.length} 字，点击编辑查看完整内容` : value;
-}
-
-function renderAiStatus(snapshot, override = '') {
-  const node = $('#ai-settings-status');
-  if (!node) return;
-  if (override) {
-    node.textContent = override;
-    node.className = override.includes('成功') ? 'setting-status ok' : (override.includes('失败') || override.includes('请') ? 'setting-status warn' : 'setting-status');
-    return;
-  }
-  if (snapshot?.settings?.enabled === false) {
-    node.textContent = snapshot.settings.locked ? '已锁定 · AI 功能已关闭' : 'AI 功能已关闭';
-    node.className = 'setting-status warn';
-    return;
-  }
-  if (snapshot?.settings?.locked) {
-    node.textContent = snapshot.ready ? '配置已锁定' : '配置已锁定但未填完整';
-    node.className = snapshot.ready ? 'setting-status ok' : 'setting-status warn';
-    return;
-  }
-  if (snapshot?.ready) {
-    node.textContent = 'AI 配置已就绪';
-    node.className = 'setting-status ok';
-    return;
-  }
-  const missing = snapshot?.missing?.join('、') || '配置';
-  node.textContent = '待填写：' + missing;
-  node.className = 'setting-status warn';
-}
-
-function applyAiEnabledState(enabled, locked = false) {
-  const card = document.querySelector('.ai-settings-card');
-  card?.classList.toggle('locked', locked);
-  const lockButton = $('#ai-lock-settings');
-  if (lockButton) {
-    lockButton.textContent = locked ? '解锁配置' : '锁定配置';
-    lockButton.dataset.locked = locked ? 'true' : 'false';
-    lockButton.classList.toggle('danger-button', locked);
-    lockButton.classList.toggle('secondary-button', !locked);
-  }
-  const disabled = !enabled || locked;
-  [
-    '#ai-base-url',
-    '#ai-model',
-    '#ai-api-key',
-    '#ai-temperature',
-    '#ai-save-settings',
-    '#ai-open-prompt-editor'
-  ].forEach((selector) => {
-    const node = $(selector);
-    if (node) node.disabled = disabled;
-  });
-  const enabledSwitch = $('#ai-enabled');
-  if (enabledSwitch) enabledSwitch.disabled = locked;
-  const testButton = $('#ai-test-connection');
-  if (testButton) testButton.disabled = !enabled;
-}
-
-function aiSettingsFromForm() {
-  return {
-    enabled: $('#ai-enabled').checked,
-    baseUrl: $('#ai-base-url').value,
-    model: $('#ai-model').value,
-    apiKey: $('#ai-api-key').value,
-    temperature: $('#ai-temperature').value,
-    testCasePrompt: $('#ai-prompt-summary')?.dataset.prompt || '',
-    locked: $('#ai-lock-settings')?.dataset.locked === 'true'
-  };
-}
-
-async function loadAiSettings() {
-  try {
-    if (!window.testCat?.aiTestAssistant) throw new Error('请通过本地预览入口运行 Test cat');
-    renderAiSettings(await window.testCat.aiTestAssistant.getSettings());
-  } catch (error) {
-    const node = $('#ai-settings-status');
-    node.textContent = error.message || '读取失败';
-    node.className = 'setting-status warn';
-  }
-}
-
-async function saveAiSettings(showToast = true) {
-  try {
-    if (!window.testCat?.aiTestAssistant) throw new Error('请通过本地预览入口运行 Test cat');
-    const result = await window.testCat.aiTestAssistant.saveSettings(aiSettingsFromForm());
-    renderAiSettings(result);
-    if (showToast) toast(result.settings.enabled ? 'AI 设置已保存' : 'AI 功能已关闭');
-    return result;
-  } catch (error) {
-    toast(error.message || '保存 AI 设置失败');
-    throw error;
-  }
-}
-
-async function testAiConnection() {
-  const button = $('#ai-test-connection');
-  try {
-    button.disabled = true;
-    if ($('#ai-lock-settings')?.dataset.locked !== 'true') await saveAiSettings(false);
-    renderAiStatus(null, '正在测试连接…');
-    if (!window.testCat?.aiTestAssistant) throw new Error('请通过本地预览入口运行 Test cat');
-    await window.testCat.aiTestAssistant.testConnection();
-    renderAiStatus(null, 'AI 连接成功');
-    toast('AI 连接成功');
-  } catch (error) {
-    const message = error.message || 'AI 连接失败';
-    renderAiStatus(null, 'AI 连接失败：' + message.slice(0, 40));
-    toast(message);
-  } finally {
-    button.disabled = !$('#ai-enabled').checked;
-  }
-}
-
-function openAiPromptEditor() {
-  if ($('#ai-lock-settings')?.dataset.locked === 'true') return toast('配置已锁定，请先解锁');
-  const editor = $('#ai-prompt-editor');
-  editor.value = $('#ai-prompt-summary')?.dataset.prompt || '';
-  updateAiPromptEditorCount();
-  $('#ai-prompt-modal').hidden = false;
-  setTimeout(() => editor.focus(), 0);
-}
-
-function updateAiPromptEditorCount() {
-  const editor = $('#ai-prompt-editor');
-  const count = $('#ai-prompt-count');
-  if (count) count.textContent = `${editor.value.length} 字`;
-}
-
-async function closeAiPromptEditor() {
-  const modal = $('#ai-prompt-modal');
-  if (modal.hidden) return;
-  modal.hidden = true;
-  if ($('#ai-lock-settings')?.dataset.locked === 'true') return;
-  try {
-    if (!window.testCat?.aiTestAssistant) throw new Error('请通过本地预览入口运行 Test cat');
-    const result = await window.testCat.aiTestAssistant.saveSettings({
-      testCasePrompt: $('#ai-prompt-editor').value
-    });
-    renderAiSettings(result);
-    toast('提示词已自动保存');
-  } catch (error) {
-    toast(error.message || '提示词自动保存失败');
-  }
-}
-
-async function toggleAiLockSettings() {
-  try {
-    if (!window.testCat?.aiTestAssistant) throw new Error('请通过本地预览入口运行 Test cat');
-    const locked = $('#ai-lock-settings')?.dataset.locked === 'true';
-    const payload = locked ? { locked: false } : { ...aiSettingsFromForm(), locked: true };
-    const result = await window.testCat.aiTestAssistant.saveSettings(payload);
-    renderAiSettings(result);
-    toast(result.settings.locked ? 'AI 配置已锁定' : 'AI 配置已解锁');
-  } catch (error) {
-    toast(error.message || '锁定配置失败');
-  }
-}
-
 function renderCompanionPetSettings(snapshot) {
   const settings = snapshot?.settings;
   if (!settings) return;
@@ -1184,10 +1025,6 @@ $('#module-modal').addEventListener('click', (event) => {
   if (event.target === $('#module-modal')) closeModal();
 });
 
-$('#ai-prompt-modal').addEventListener('click', (event) => {
-  if (event.target === $('#ai-prompt-modal')) closeAiPromptEditor();
-});
-
 $('#module-form').addEventListener('submit', (event) => {
   event.preventDefault();
   const name = $('#module-name').value.trim();
@@ -1210,7 +1047,6 @@ $('#module-form').addEventListener('submit', (event) => {
 });
 
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape' && !$('#ai-prompt-modal').hidden) closeAiPromptEditor();
   if (event.key === 'Escape' && !$('#module-modal').hidden) closeModal();
 });
 
@@ -1267,17 +1103,6 @@ $('#todo-clear-completed').addEventListener('click', () => {
 $('#theme-button').addEventListener('click', () => setTheme(nextTheme(localStorage.getItem(THEME_KEY))));
 $('#theme-select').addEventListener('change', (event) => setTheme(event.target.value));
 $('#theme-switch').addEventListener('change', (event) => setTheme(event.target.checked ? 'dark' : 'light'));
-$('#ai-enabled').addEventListener('change', (event) => {
-  applyAiEnabledState(event.target.checked);
-  saveAiSettings();
-});
-$('#ai-save-settings').addEventListener('click', () => saveAiSettings());
-$('#ai-test-connection').addEventListener('click', testAiConnection);
-$('#ai-lock-settings').addEventListener('click', toggleAiLockSettings);
-$('#ai-open-prompt-editor').addEventListener('click', openAiPromptEditor);
-$('#ai-close-prompt-editor').addEventListener('click', closeAiPromptEditor);
-$('#ai-done-prompt-editor').addEventListener('click', closeAiPromptEditor);
-$('#ai-prompt-editor').addEventListener('input', updateAiPromptEditorCount);
 $('#companion-pet-active')?.addEventListener('change', () => saveCompanionPetSettings(false));
 $('#companion-pet-enabled').addEventListener('change', () => saveCompanionPetSettings(false));
 $('#companion-pet-movement').addEventListener('change', () => saveCompanionPetSettings(false));
@@ -1365,7 +1190,6 @@ $('#import-input').addEventListener('change', async (event) => {
 });
 
 setTheme(localStorage.getItem(THEME_KEY) || 'light');
-loadAiSettings();
 loadCaptureSettings();
 loadCompanionPetSettings();
 updateTodoDueMin();
