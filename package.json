@@ -87,6 +87,8 @@
     "mac": {
       "icon": "assets/icons/test-cat.icns",
       "category": "public.app-category.developer-tools",
+      "identity": "-",
+      "hardenedRuntime": false,
       "extendInfo": {
         "NSScreenCaptureUsageDescription": "Test cat 需要读取屏幕画面，用于截图、区域录屏和测试取证。",
         "NSMicrophoneUsageDescription": "Test cat 仅在录屏时按你的选择采集麦克风声音。"

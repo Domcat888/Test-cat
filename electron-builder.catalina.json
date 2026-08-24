@@ -40,6 +40,8 @@
   "mac": {
     "icon": "assets/icons/test-cat.icns",
     "category": "public.app-category.developer-tools",
+    "identity": "-",
+    "hardenedRuntime": false,
     "minimumSystemVersion": "10.15.0",
     "extendInfo": {
       "NSScreenCaptureUsageDescription": "Test cat 需要读取屏幕画面，用于截图、区域录屏和测试取证。",
